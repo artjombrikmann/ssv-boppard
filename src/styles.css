@@ -1,4 +1,241 @@
-.App {
-  font-family: sans-serif;
-  text-align: center;
+/* ── Globale Basis ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Manrope', system-ui, sans-serif;
+  background: #f8faf8;
+  color: #191c1b;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Schriften ── */
+.font-headline { font-family: 'Lexend', sans-serif; }
+
+/* ── Material Symbols ── */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400;
+  vertical-align: middle;
+  user-select: none;
+}
+.icon-fill { font-variation-settings: 'FILL' 1, 'wght' 400; }
+
+/* ── Scrollbar ausblenden ── */
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }
+
+/* ── Farben ── */
+:root {
+  --primary:       #0d631b;
+  --primary-dark:  #084d13;
+  --primary-light: #e8f5ee;
+  --secondary:     #5d5e61;
+  --surface:       #f8faf8;
+  --surface-dim:   #eceeec;
+  --surface-card:  #ffffff;
+  --error:         #ef4444;
+  --warning:       #f59e0b;
+}
+
+/* ── Konfetti Canvas ── */
+#konfetti-canvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 999;
+  display: none;
+}
+
+/* ── Danke-Overlay ── */
+.danke-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Animationen ── */
+@keyframes popIn {
+  from { transform: scale(.6); opacity: 0; }
+  to   { transform: scale(1);  opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+
+.animate-pop  { animation: popIn  .4s cubic-bezier(.175,.885,.32,1.275); }
+.animate-fade { animation: fadeUp .3s ease; }
+
+/* ── Belegungsleiste ── */
+.belegungs-bar {
+  border-radius: 8px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+}
+.belegungs-bar.frei  { background: var(--primary-light); color: var(--primary); }
+.belegungs-bar.halb  { background: #fffbeb; color: #b45309; }
+.belegungs-bar.voll  { background: #fef2f2; color: var(--error); }
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a1a;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-family: 'Manrope', sans-serif;
+  font-weight: 600;
+  z-index: 500;
+  opacity: 0;
+  transition: opacity .3s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+
+/* ── Bottom Nav ── */
+.nav-btn { color: #9ca3af; transition: color .15s; }
+.nav-btn.active { color: var(--primary); }
+
+/* ── Cards ── */
+.card {
+  background: var(--surface-card);
+  border-radius: 16px;
+  border: 1px solid #f3f4f6;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.card-lg {
+  background: var(--surface-card);
+  border-radius: 24px;
+  border: 1px solid #f3f4f6;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-family: 'Lexend', sans-serif;
+  font-weight: 900;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
+  width: 100%;
+}
+.btn-primary:hover  { opacity: .92; }
+.btn-primary:active { transform: scale(.98); }
+
+.btn-secondary {
+  background: var(--primary-light);
+  color: var(--primary);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-family: 'Lexend', sans-serif;
+  font-weight: 900;
+  font-size: 14px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 11px;
+  border-radius: 8px;
+  width: auto;
+}
+
+/* ── Inputs ── */
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color .15s;
+  background: #fff;
+}
+.input:focus { border-color: var(--primary); }
+
+/* ── Pills / Badges ── */
+.pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: 'Lexend', sans-serif;
+}
+.pill-green  { background: var(--primary-light); color: var(--primary); }
+.pill-red    { background: #fef2f2; color: var(--error); }
+.pill-amber  { background: #fffbeb; color: #b45309; }
+.pill-gray   { background: #f3f4f6; color: #6b7280; }
+
+/* ── Profil Avatar ── */
+.avatar {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Lexend', sans-serif;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+.avatar-sm { width: 32px; height: 32px; font-size: 11px; }
+.avatar-md { width: 40px; height: 40px; font-size: 13px; }
+.avatar-lg { width: 64px; height: 64px; font-size: 22px; }
+
+/* ── Sektion-Titel ── */
+.section-title {
+  font-family: 'Lexend', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--secondary);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 10px;
+}
+
+/* ── Modal ── */
+.modal-sheet {
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  padding: 20px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: fadeUp .3s ease;
+}
+.modal-handle {
+  width: 40px; height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  margin: 0 auto 16px;
 }
