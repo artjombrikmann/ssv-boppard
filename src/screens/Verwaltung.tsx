@@ -80,22 +80,24 @@ export default function Verwaltung(_: Props) {
     loadAll()
   }
 
-  // NEU – Event anlegen und automatisch zu Schritt 2 wechseln
+  // FIX: datum_ende als null wenn leer
   async function addEvent() {
     if (!newEv.name || !newEv.datum) { showToast('❌ Bitte Name und Datum eingeben'); return }
-    const { data, error } = await supabase.from('veranstaltungen').insert({ ...newEv, status: 'Geplant' }).select().single()
+    const { data, error } = await supabase.from('veranstaltungen').insert({
+      ...newEv,
+      datum_ende: newEv.datum_ende || null,
+      status: 'Geplant'
+    }).select().single()
     if (error) { showToast('❌ Fehler: ' + error.message); return }
     showToast('✅ Veranstaltung angelegt!')
     setNewEv({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
     await loadAll()
-    // Automatisch zu Schritt 2 wechseln
     setActiveEvId(data.id)
     setActiveEvName(data.name)
     setNewSh(prev => ({ ...prev, veranstaltung_id: data.id }))
     setEvStep(2)
   }
 
-  // NEU – Schicht anlegen (im 2-Schritte-Flow bleibt man auf Schritt 2)
   async function addShift() {
     if (!newSh.bezeichnung || !newSh.veranstaltung_id) { showToast('❌ Bezeichnung und Veranstaltung pflicht'); return }
     await supabase.from('schichten').insert({ ...newSh, belegt: 0 })
@@ -211,7 +213,6 @@ export default function Verwaltung(_: Props) {
     { id:'mitglieder',      label:'User' },
   ]
 
-  // Aktuelle Veranstaltung mit Schichten für Schritt 2
   const activeEv = events.find(e => e.id === activeEvId)
 
   return (
@@ -344,10 +345,8 @@ export default function Verwaltung(_: Props) {
       {tab === 'veranstaltungen' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
 
-          {/* Schritt-Anzeige */}
           <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-              {/* Schritt 1 */}
               <div style={{ display:'flex', alignItems:'center', gap:6, cursor: evStep === 2 ? 'pointer' : 'default' }}
                 onClick={() => evStep === 2 && setEvStep(1)}>
                 <div style={{ width:24, height:24, borderRadius:'50%', background: evStep === 1 ? '#0d631b' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -355,9 +354,7 @@ export default function Verwaltung(_: Props) {
                 </div>
                 <span style={{ fontSize:12, fontWeight: evStep === 1 ? 700 : 400, color: evStep === 1 ? '#0d631b' : '#9ca3af', fontFamily:'Lexend,sans-serif' }}>Veranstaltung</span>
               </div>
-              {/* Linie */}
               <div style={{ flex:1, height:2, background: evStep === 2 ? '#0d631b' : '#e5e7eb', borderRadius:2 }} />
-              {/* Schritt 2 */}
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                 <div style={{ width:24, height:24, borderRadius:'50%', background: evStep === 2 ? '#0d631b' : '#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                   <span style={{ fontSize:11, fontWeight:900, color: evStep === 2 ? '#fff' : '#9ca3af' }}>2</span>
@@ -375,7 +372,7 @@ export default function Verwaltung(_: Props) {
             )}
           </div>
 
-          {/* ── SCHRITT 1: Veranstaltung anlegen ── */}
+          {/* ── SCHRITT 1 ── */}
           {evStep === 1 && (
             <>
               <InfoBox text="Lege zuerst eine Veranstaltung an. Danach kannst du direkt Schichten hinzufügen." />
@@ -399,7 +396,6 @@ export default function Verwaltung(_: Props) {
                 </div>
               </Section>
 
-              {/* Bestehende Veranstaltungen – direkt bearbeiten */}
               {events.length > 0 && (
                 <Section title="Bestehende Veranstaltungen">
                   <p style={{ fontSize:11, color:'#9ca3af', marginBottom:10 }}>Klicke auf eine Veranstaltung um Schichten hinzuzufügen oder zu verwalten.</p>
@@ -428,10 +424,9 @@ export default function Verwaltung(_: Props) {
             </>
           )}
 
-          {/* ── SCHRITT 2: Schichten anlegen ── */}
+          {/* ── SCHRITT 2 ── */}
           {evStep === 2 && (
             <>
-              {/* Übersicht bestehender Schichten */}
               <Section title={`Schichten von ${activeEvName} (${activeEv?.schichten.length ?? 0})`}>
                 {!activeEv || activeEv.schichten.length === 0
                   ? <Empty text="Noch keine Schichten – lege die erste an!" />
@@ -460,7 +455,6 @@ export default function Verwaltung(_: Props) {
                 }
               </Section>
 
-              {/* Neue Schicht anlegen */}
               <Section title="Neue Schicht hinzufügen">
                 <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                   <F label="Bezeichnung"><input style={inp} value={newSh.bezeichnung} onChange={e=>setNewSh({...newSh,bezeichnung:e.target.value})} placeholder="z.B. Kasse – Vormittag"/></F>
