@@ -68,26 +68,7 @@ export default function Login() {
       return
     }
 
-    const { error: profileError } = await supabase.from('profiles').insert({
-      id: data.user.id,
-      email,
-      name: fullName,
-      display_name: vorname,
-      punkte: 0,
-      schichten_count: 0,
-      is_admin: false,
-      consent_rangliste: consentRangliste,
-      consent_dsgvo: consentDsgvo,
-      consent_erinnerung: consentErinnerung,
-    })
-
-    if (profileError) {
-      console.error('PROFIL INSERT FEHLER:', profileError)
-      setError('Konto erstellt, aber Profil konnte nicht gespeichert werden: ' + profileError.message)
-      setLoading(false)
-      return
-    }
-
+  
     setMode('erfolg')
     setLoading(false)
   }
