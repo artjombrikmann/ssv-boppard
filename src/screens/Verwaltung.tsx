@@ -21,20 +21,24 @@ export default function Verwaltung(_: Props) {
   const [reqs,       setReqs]       = useState<GutscheinAnfrage[]>([])
   const [kategorien, setKategorien] = useState<Kategorie[]>([])
   const [settings,   setSettings]   = useState<Einstellungen>({ id:1, punkte_kurz:5, punkte_normal:10, punkte_lang:15, punkte_sonder:20, bonus_turnier:3, bonus_fest:2, admin_email:'geschaeftsfuehrung@ssv-boppard.de' })
-  // NEU: kategorie im newEv State
-  const [newEv, setNewEv] = useState({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
+  const [newEv,      setNewEv]      = useState({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
   const [newSh,      setNewSh]      = useState({ bezeichnung:'', veranstaltung_id:0, kategorie_id:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' })
   const [newKat,     setNewKat]     = useState('')
   const [saved,      setSaved]      = useState(false)
   const [toast,      setToast]      = useState('')
   const [expandedEv, setExpandedEv] = useState<number | null>(null)
 
-  // NEU – Mitglieder-Tab
-  const [selectedUser, setSelectedUser] = useState<Profile | null>(null)
-  const [userSearch,   setUserSearch]   = useState('')
-  const [newTemp,      setNewTemp]      = useState({ vorname:'', nachname:'', email:'', typ:'Mitglied' })
-  const [tempLoading,  setTempLoading]  = useState(false)
-  const [allSchichten, setAllSchichten] = useState<Schicht[]>([])
+  // NEU – 2-Schritte-Flow für Events
+  const [evStep,        setEvStep]        = useState<1 | 2>(1)
+  const [activeEvId,    setActiveEvId]    = useState<number | null>(null)
+  const [activeEvName,  setActiveEvName]  = useState('')
+
+  // Mitglieder-Tab
+  const [selectedUser,   setSelectedUser]   = useState<Profile | null>(null)
+  const [userSearch,     setUserSearch]     = useState('')
+  const [newTemp,        setNewTemp]        = useState({ vorname:'', nachname:'', email:'', typ:'Mitglied' })
+  const [tempLoading,    setTempLoading]    = useState(false)
+  const [allSchichten,   setAllSchichten]   = useState<Schicht[]>([])
   const [userBelegungen, setUserBelegungen] = useState<number[]>([])
 
   useEffect(() => { loadAll() }, [])
@@ -51,11 +55,9 @@ export default function Verwaltung(_: Props) {
       supabase.from('einstellungen').select('*').single(),
       supabase.from('kategorien').select('*').order('name'),
     ])
-
     const alleSchichten: Schicht[] = s_data.data ?? []
     const alleEvents: Veranstaltung[] = e.data ?? []
     setRawEvents(alleEvents)
-
     const evMitAuslastung: VeranstaltungMitAuslastung[] = alleEvents.map(ev => {
       const schichten = alleSchichten.filter(s => s.veranstaltung_id === ev.id)
       const gesamtPlaetze = schichten.reduce((sum, s) => sum + s.plaetze, 0)
@@ -63,7 +65,6 @@ export default function Verwaltung(_: Props) {
       const auslastung = gesamtPlaetze > 0 ? Math.round((belegtePlaetze / gesamtPlaetze) * 100) : 0
       return { ...ev, schichten, gesamtPlaetze, belegtePlaetze, auslastung }
     })
-
     setBookings(b.data ?? [])
     setMembers(m.data ?? [])
     setEvents(evMitAuslastung)
@@ -79,18 +80,26 @@ export default function Verwaltung(_: Props) {
     loadAll()
   }
 
+  // NEU – Event anlegen und automatisch zu Schritt 2 wechseln
   async function addEvent() {
     if (!newEv.name || !newEv.datum) { showToast('❌ Bitte Name und Datum eingeben'); return }
-    await supabase.from('veranstaltungen').insert({ ...newEv, status: 'Geplant' })
-    setNewEv({ name:'', typ:'Fußball-Turnier', datum:'', ort:'', kategorie:'heimspiel' })
+    const { data, error } = await supabase.from('veranstaltungen').insert({ ...newEv, status: 'Geplant' }).select().single()
+    if (error) { showToast('❌ Fehler: ' + error.message); return }
     showToast('✅ Veranstaltung angelegt!')
-    loadAll()
+    setNewEv({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
+    await loadAll()
+    // Automatisch zu Schritt 2 wechseln
+    setActiveEvId(data.id)
+    setActiveEvName(data.name)
+    setNewSh(prev => ({ ...prev, veranstaltung_id: data.id }))
+    setEvStep(2)
   }
 
+  // NEU – Schicht anlegen (im 2-Schritte-Flow bleibt man auf Schritt 2)
   async function addShift() {
     if (!newSh.bezeichnung || !newSh.veranstaltung_id) { showToast('❌ Bezeichnung und Veranstaltung pflicht'); return }
     await supabase.from('schichten').insert({ ...newSh, belegt: 0 })
-    setNewSh({ bezeichnung:'', veranstaltung_id:0, kategorie_id:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' })
+    setNewSh(prev => ({ ...prev, bezeichnung:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' }))
     showToast('✅ Schicht angelegt!')
     loadAll()
   }
@@ -111,18 +120,18 @@ export default function Verwaltung(_: Props) {
     loadAll()
   }
 
-  // NEU – Veranstaltung löschen
   async function deleteVeranstaltung(ev: VeranstaltungMitAuslastung) {
-    const ok = window.confirm(
-      `Veranstaltung "${ev.name}" wirklich löschen?\n\nAlle ${ev.schichten.length} Schichten und Belegungen werden ebenfalls gelöscht.`
-    )
+    const ok = window.confirm(`Veranstaltung "${ev.name}" wirklich löschen?\n\nAlle ${ev.schichten.length} Schichten und Belegungen werden ebenfalls gelöscht.`)
     if (!ok) return
     const { error } = await supabase.from('veranstaltungen').delete().eq('id', ev.id)
     if (error) showToast('❌ Fehler: ' + error.message)
-    else { showToast('🗑️ Veranstaltung gelöscht'); loadAll() }
+    else {
+      showToast('🗑️ Veranstaltung gelöscht')
+      if (activeEvId === ev.id) { setEvStep(1); setActiveEvId(null) }
+      loadAll()
+    }
   }
 
-  // NEU – Schicht löschen
   async function deleteSchicht(s: Schicht) {
     const belegtHinweis = s.belegt > 0 ? `\n\n⚠️ ${s.belegt} Mitglied(er) sind noch eingetragen und werden abgemeldet.` : ''
     const ok = window.confirm(`Schicht "${s.bezeichnung}" wirklich löschen?${belegtHinweis}`)
@@ -151,72 +160,46 @@ export default function Verwaltung(_: Props) {
     return '#ef4444'
   }
 
-  // NEU – Schichten für Zuweisung laden
   async function loadAllSchichten(userId?: string) {
-    const { data } = await supabase.from('schichten')
-      .select('*, veranstaltungen(name)')
-      .order('startzeit')
+    const { data } = await supabase.from('schichten').select('*, veranstaltungen(name)').order('startzeit')
     setAllSchichten(data ?? [])
-
     if (userId) {
-      const { data: bk } = await supabase.from('schichtbelegungen')
-        .select('schicht_id').eq('mitglied_id', userId)
+      const { data: bk } = await supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', userId)
       setUserBelegungen((bk ?? []).map((b: any) => b.schicht_id))
     }
   }
 
-  // NEU – Temporären User anlegen
   async function addTempUser() {
     if (!newTemp.vorname.trim() || !newTemp.nachname.trim()) { showToast('❌ Vor- und Nachname pflicht'); return }
     setTempLoading(true)
     const name = `${newTemp.vorname.trim()} ${newTemp.nachname.trim()}`
     const { error } = await supabase.from('profiles').insert({
-      id: crypto.randomUUID(),
-      name,
-      display_name: newTemp.vorname.trim(),
+      id: crypto.randomUUID(), name, display_name: newTemp.vorname.trim(),
       email: newTemp.email || `temp_${Date.now()}@ssv-boppard.intern`,
-      punkte: 0,
-      schichten_count: 0,
-      is_admin: false,
-      is_temp: true,
-      temp_typ: newTemp.typ,
+      punkte: 0, schichten_count: 0, is_admin: false, is_temp: true, temp_typ: newTemp.typ,
     })
     if (error) showToast('❌ Fehler: ' + error.message)
-    else {
-      showToast(`✅ ${name} als temporärer User angelegt!`)
-      setNewTemp({ vorname:'', nachname:'', email:'', typ:'Mitglied' })
-      loadAll()
-    }
+    else { showToast(`✅ ${name} als temporärer User angelegt!`); setNewTemp({ vorname:'', nachname:'', email:'', typ:'Mitglied' }); loadAll() }
     setTempLoading(false)
   }
 
-  // NEU – Schicht zuweisen
   async function assignSchicht(user: Profile, schicht: Schicht) {
-    // Prüfen ob schon belegt
-    const { data: existing } = await supabase.from('schichtbelegungen')
-      .select('id').eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
+    const { data: existing } = await supabase.from('schichtbelegungen').select('id').eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
     if (existing && existing.length > 0) { showToast('⚠️ Bereits eingetragen'); return }
     if (schicht.belegt >= schicht.plaetze) { showToast('❌ Schicht ist voll'); return }
-
-    await supabase.from('schichtbelegungen').insert({
-      schicht_id: schicht.id, mitglied_id: user.id, status: 'Angemeldet'
-    })
+    await supabase.from('schichtbelegungen').insert({ schicht_id: schicht.id, mitglied_id: user.id, status: 'Angemeldet' })
     await supabase.from('schichten').update({ belegt: schicht.belegt + 1 }).eq('id', schicht.id)
     showToast(`✅ ${user.display_name || user.name} → ${schicht.bezeichnung}`)
-    loadAll()
-    loadAllSchichten()
+    loadAll(); loadAllSchichten()
   }
 
-  // NEU – Zuweisung entfernen
   async function removeAssignment(user: Profile, schicht: Schicht) {
     const ok = window.confirm(`${user.display_name || user.name} aus "${schicht.bezeichnung}" austragen?`)
     if (!ok) return
-    await supabase.from('schichtbelegungen').delete()
-      .eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
+    await supabase.from('schichtbelegungen').delete().eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
     await supabase.from('schichten').update({ belegt: Math.max(0, schicht.belegt - 1) }).eq('id', schicht.id)
     showToast('🗑️ Zuweisung entfernt')
-    loadAll()
-    loadAllSchichten()
+    loadAll(); loadAllSchichten()
   }
 
   const TABS: { id: AdminTab; label: string }[] = [
@@ -228,10 +211,12 @@ export default function Verwaltung(_: Props) {
     { id:'mitglieder',      label:'User' },
   ]
 
+  // Aktuelle Veranstaltung mit Schichten für Schritt 2
+  const activeEv = events.find(e => e.id === activeEvId)
+
   return (
     <div style={{ padding:'20px 16px', display:'flex', flexDirection:'column', gap:16 }}>
 
-      {/* Toast */}
       {toast && (
         <div style={{ position:'fixed', bottom:90, left:'50%', transform:'translateX(-50%)', background:'#1a1a1a', color:'#fff', padding:'10px 20px', borderRadius:99, fontSize:13, fontWeight:600, zIndex:500, whiteSpace:'nowrap', fontFamily:'Manrope,sans-serif' }}>
           {toast}
@@ -240,7 +225,6 @@ export default function Verwaltung(_: Props) {
 
       <h1 style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:22 }}>Admin-Bereich</h1>
 
-      {/* Tabs */}
       <div style={{ display:'flex', gap:1, background:'#eceeec', borderRadius:14, padding:4, overflowX:'auto' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -253,7 +237,6 @@ export default function Verwaltung(_: Props) {
       {/* ── ÜBERSICHT ── */}
       {tab === 'uebersicht' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-
           <div style={{ background:'#0d631b', borderRadius:20, padding:20, color:'#fff' }}>
             <p style={{ fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'.08em', opacity:.7, marginBottom:12 }}>Vereins-Übersicht</p>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
@@ -270,97 +253,74 @@ export default function Verwaltung(_: Props) {
             </div>
           </div>
 
-          {/* Veranstaltungen mit Auslastung */}
           <Section title={`Veranstaltungen & Auslastung (${events.length})`}>
-            {events.length === 0
-              ? <Empty text="Noch keine Veranstaltungen angelegt." />
-              : events.map(ev => (
-                <div key={ev.id} style={{ borderBottom:'1px solid #f9fafb' }}>
-                  <div style={{ padding:'12px 0' }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                      <div style={{ cursor:'pointer', flex:1 }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
-                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{ev.name}</p>
-                        <p style={{ fontSize:11, color:'#9ca3af' }}>
-                          {new Date(ev.datum).toLocaleDateString('de-DE')} · {ev.ort}
-                        </p>
-                      </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        <div style={{ textAlign:'right', cursor:'pointer' }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
-                          <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:18, color: auslastungFarbe(ev.auslastung) }}>
-                            {ev.auslastung}%
-                          </p>
-                          <p style={{ fontSize:10, color:'#9ca3af' }}>{ev.belegtePlaetze}/{ev.gesamtPlaetze} Plätze</p>
-                        </div>
-                        {/* NEU – Löschen-Button Veranstaltung */}
-                        <button onClick={() => deleteVeranstaltung(ev)}
-                          style={{ width:32, height:32, borderRadius:8, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                          <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
-                        </button>
-                      </div>
+            {events.length === 0 ? <Empty text="Noch keine Veranstaltungen angelegt." /> : events.map(ev => (
+              <div key={ev.id} style={{ borderBottom:'1px solid #f9fafb' }}>
+                <div style={{ padding:'12px 0' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                    <div style={{ cursor:'pointer', flex:1 }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
+                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{ev.name}</p>
+                      <p style={{ fontSize:11, color:'#9ca3af' }}>{new Date(ev.datum).toLocaleDateString('de-DE')} · {ev.ort}</p>
                     </div>
-
-                    <div style={{ height:6, background:'#f3f4f6', borderRadius:99, overflow:'hidden' }}>
-                      <div style={{ height:'100%', width:`${ev.auslastung}%`, background: auslastungFarbe(ev.auslastung), borderRadius:99, transition:'width .4s ease' }} />
-                    </div>
-                    <div style={{ marginTop:6, display:'flex', gap:6, alignItems:'center', cursor:'pointer' }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
-                      <span style={{ fontSize:10, color:'#9ca3af' }}>{ev.schichten.length} Schichten</span>
-                      <span className="material-symbols-outlined" style={{ fontSize:14, color:'#9ca3af' }}>
-                        {expandedEv === ev.id ? 'expand_less' : 'expand_more'}
-                      </span>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div style={{ textAlign:'right', cursor:'pointer' }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
+                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:18, color: auslastungFarbe(ev.auslastung) }}>{ev.auslastung}%</p>
+                        <p style={{ fontSize:10, color:'#9ca3af' }}>{ev.belegtePlaetze}/{ev.gesamtPlaetze} Plätze</p>
+                      </div>
+                      <button onClick={() => deleteVeranstaltung(ev)} style={{ width:32, height:32, borderRadius:8, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
+                      </button>
                     </div>
                   </div>
-
-                  {/* Ausgeklappte Schichten */}
-                  {expandedEv === ev.id && ev.schichten.length > 0 && (
-                    <div style={{ paddingBottom:12, display:'flex', flexDirection:'column', gap:6 }}>
-                      {ev.schichten.map(s => {
-                        const pct = s.plaetze > 0 ? Math.round((s.belegt / s.plaetze) * 100) : 0
-                        return (
-                          <div key={s.id} style={{ background:'#f8faf8', borderRadius:10, padding:'10px 12px' }}>
-                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                              <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:600, fontSize:12 }}>{s.bezeichnung}</p>
-                              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                                <span style={{ fontSize:11, fontWeight:700, color: auslastungFarbe(pct) }}>{s.belegt}/{s.plaetze}</span>
-                                {/* NEU – Löschen-Button Schicht */}
-                                <button onClick={() => deleteSchicht(s)}
-                                  style={{ width:24, height:24, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                  <span className="material-symbols-outlined" style={{ fontSize:13, color:'#ef4444' }}>delete</span>
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ height:4, background:'#e5e7eb', borderRadius:99, overflow:'hidden' }}>
-                              <div style={{ height:'100%', width:`${pct}%`, background: auslastungFarbe(pct), borderRadius:99 }} />
-                            </div>
-                            <p style={{ fontSize:10, color:'#9ca3af', marginTop:4 }}>
-                              {s.startzeit} – {s.endzeit} · {s.punkte} Pkt
-                            </p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {expandedEv === ev.id && ev.schichten.length === 0 && (
-                    <p style={{ fontSize:12, color:'#9ca3af', paddingBottom:12 }}>Noch keine Schichten für diese Veranstaltung.</p>
-                  )}
+                  <div style={{ height:6, background:'#f3f4f6', borderRadius:99, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${ev.auslastung}%`, background: auslastungFarbe(ev.auslastung), borderRadius:99, transition:'width .4s ease' }} />
+                  </div>
+                  <div style={{ marginTop:6, display:'flex', gap:6, alignItems:'center', cursor:'pointer' }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
+                    <span style={{ fontSize:10, color:'#9ca3af' }}>{ev.schichten.length} Schichten</span>
+                    <span className="material-symbols-outlined" style={{ fontSize:14, color:'#9ca3af' }}>{expandedEv === ev.id ? 'expand_less' : 'expand_more'}</span>
+                  </div>
                 </div>
-              ))
-            }
+                {expandedEv === ev.id && ev.schichten.length > 0 && (
+                  <div style={{ paddingBottom:12, display:'flex', flexDirection:'column', gap:6 }}>
+                    {ev.schichten.map(s => {
+                      const pct = s.plaetze > 0 ? Math.round((s.belegt / s.plaetze) * 100) : 0
+                      return (
+                        <div key={s.id} style={{ background:'#f8faf8', borderRadius:10, padding:'10px 12px' }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:600, fontSize:12 }}>{s.bezeichnung}</p>
+                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                              <span style={{ fontSize:11, fontWeight:700, color: auslastungFarbe(pct) }}>{s.belegt}/{s.plaetze}</span>
+                              <button onClick={() => deleteSchicht(s)} style={{ width:24, height:24, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                <span className="material-symbols-outlined" style={{ fontSize:13, color:'#ef4444' }}>delete</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ height:4, background:'#e5e7eb', borderRadius:99, overflow:'hidden' }}>
+                            <div style={{ height:'100%', width:`${pct}%`, background: auslastungFarbe(pct), borderRadius:99 }} />
+                          </div>
+                          <p style={{ fontSize:10, color:'#9ca3af', marginTop:4 }}>{s.startzeit} – {s.endzeit} · {s.punkte} Pkt</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                {expandedEv === ev.id && ev.schichten.length === 0 && (
+                  <p style={{ fontSize:12, color:'#9ca3af', paddingBottom:12 }}>Noch keine Schichten für diese Veranstaltung.</p>
+                )}
+              </div>
+            ))}
           </Section>
 
-          {/* Ausstehende Punkte */}
           <Section title="Ausstehende Punkte vergeben">
             {bookings.filter(b => !b.punkte_vergeben).length === 0
               ? <Empty text="Alle Punkte vergeben ✅" />
               : bookings.filter(b => !b.punkte_vergeben).map(b => (
-                <Row key={b.id}
-                  title={(b.profiles as any)?.name ?? '–'}
-                  sub={b.schichten?.bezeichnung ?? '–'}
+                <Row key={b.id} title={(b.profiles as any)?.name ?? '–'} sub={b.schichten?.bezeichnung ?? '–'}
                   right={<button onClick={() => givePoints(b)} style={btnSm}>✓ {b.schichten?.punkte} Pkt</button>} />
               ))
             }
           </Section>
 
-          {/* Mitglieder */}
           <Section title={`Mitglieder (${members.length})`}>
             {members.map((m, i) => (
               <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
@@ -380,61 +340,155 @@ export default function Verwaltung(_: Props) {
         </div>
       )}
 
-      {/* ── VERANSTALTUNGEN ── */}
+      {/* ── VERANSTALTUNGEN – 2-SCHRITTE-FLOW ── */}
       {tab === 'veranstaltungen' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <InfoBox text="Lege hier neue Veranstaltungen an und füge ihnen Schichten hinzu." />
 
-          {/* Neue Veranstaltung */}
-          <Section title="Neue Veranstaltung anlegen">
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <F label="Name"><input style={inp} value={newEv.name} onChange={e=>setNewEv({...newEv,name:e.target.value})} placeholder="z.B. Sommerfest 2025"/></F>
-              {/* Kategorie / Banner Auswahl */}
-              <F label="Kategorie / Banner">
-                <select style={inp} value={newEv.kategorie} onChange={e=>setNewEv({...newEv,kategorie:e.target.value})}>
-                  <option value="heimspiel">⚽ Heimspiel</option>
-                  <option value="vereinsfest">🎉 Vereinsfest</option>
-                  <option value="flag-football">🏈 Flag-Football</option>
-                  <option value="turnier">🏆 Turnier</option>
-                </select>
-              </F>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                <F label="Von"><input style={inp} type="date" value={newEv.datum} onChange={e=>setNewEv({...newEv,datum:e.target.value})}/></F>
-                <F label="Bis (optional)"><input style={inp} type="date" value={newEv.datum_ende} onChange={e=>setNewEv({...newEv,datum_ende:e.target.value})}/></F>
+          {/* Schritt-Anzeige */}
+          <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+              {/* Schritt 1 */}
+              <div style={{ display:'flex', alignItems:'center', gap:6, cursor: evStep === 2 ? 'pointer' : 'default' }}
+                onClick={() => evStep === 2 && setEvStep(1)}>
+                <div style={{ width:24, height:24, borderRadius:'50%', background: evStep === 1 ? '#0d631b' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontSize:11, fontWeight:900, color: evStep === 1 ? '#fff' : '#0d631b' }}>1</span>
+                </div>
+                <span style={{ fontSize:12, fontWeight: evStep === 1 ? 700 : 400, color: evStep === 1 ? '#0d631b' : '#9ca3af', fontFamily:'Lexend,sans-serif' }}>Veranstaltung</span>
               </div>
-              <F label="Ort"><input style={inp} value={newEv.ort} onChange={e=>setNewEv({...newEv,ort:e.target.value})} placeholder="Boppard"/></F>
-              <button style={btnPrimary} onClick={addEvent}>Veranstaltung anlegen</button>
+              {/* Linie */}
+              <div style={{ flex:1, height:2, background: evStep === 2 ? '#0d631b' : '#e5e7eb', borderRadius:2 }} />
+              {/* Schritt 2 */}
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <div style={{ width:24, height:24, borderRadius:'50%', background: evStep === 2 ? '#0d631b' : '#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontSize:11, fontWeight:900, color: evStep === 2 ? '#fff' : '#9ca3af' }}>2</span>
+                </div>
+                <span style={{ fontSize:12, fontWeight: evStep === 2 ? 700 : 400, color: evStep === 2 ? '#0d631b' : '#9ca3af', fontFamily:'Lexend,sans-serif' }}>Schichten</span>
+              </div>
             </div>
-          </Section>
+            {evStep === 2 && activeEvName && (
+              <p style={{ fontSize:11, color:'#9ca3af', marginTop:4 }}>
+                Veranstaltung: <strong style={{ color:'#0d631b' }}>{activeEvName}</strong>
+                <button onClick={() => setEvStep(1)} style={{ marginLeft:8, background:'none', border:'none', color:'#9ca3af', fontSize:11, cursor:'pointer', textDecoration:'underline' }}>
+                  ändern
+                </button>
+              </p>
+            )}
+          </div>
 
-          {/* Neue Schicht */}
-          <Section title="Neue Schicht anlegen">
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <F label="Bezeichnung"><input style={inp} value={newSh.bezeichnung} onChange={e=>setNewSh({...newSh,bezeichnung:e.target.value})} placeholder="Kasse – Vormittag"/></F>
-              <F label="Veranstaltung">
-                <select style={inp} value={newSh.veranstaltung_id} onChange={e=>setNewSh({...newSh,veranstaltung_id:parseInt(e.target.value)})}>
-                  <option value={0}>– auswählen –</option>
-                  {rawEvents.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select>
-              </F>
-              <F label="Kategorie">
-                <select style={inp} value={newSh.kategorie_id} onChange={e=>setNewSh({...newSh,kategorie_id:e.target.value})}>
-                  <option value="">– keine –</option>
-                  {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
-                </select>
-              </F>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                <F label="Von"><input style={inp} type="time" value={newSh.startzeit} onChange={e=>setNewSh({...newSh,startzeit:e.target.value})}/></F>
-                <F label="Bis"><input style={inp} type="time" value={newSh.endzeit} onChange={e=>setNewSh({...newSh,endzeit:e.target.value})}/></F>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                <F label="Plätze"><input style={inp} type="number" min="1" value={newSh.plaetze} onChange={e=>setNewSh({...newSh,plaetze:parseInt(e.target.value)||1})}/></F>
-                <F label="Punkte"><input style={inp} type="number" min="1" value={newSh.punkte} onChange={e=>setNewSh({...newSh,punkte:parseInt(e.target.value)||1})}/></F>
-              </div>
-              <F label="Aufgabe"><input style={inp} value={newSh.beschreibung} onChange={e=>setNewSh({...newSh,beschreibung:e.target.value})} placeholder="Kurze Beschreibung"/></F>
-              <button style={btnPrimary} onClick={addShift}>Schicht anlegen</button>
-            </div>
-          </Section>
+          {/* ── SCHRITT 1: Veranstaltung anlegen ── */}
+          {evStep === 1 && (
+            <>
+              <InfoBox text="Lege zuerst eine Veranstaltung an. Danach kannst du direkt Schichten hinzufügen." />
+              <Section title="Neue Veranstaltung anlegen">
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  <F label="Name"><input style={inp} value={newEv.name} onChange={e=>setNewEv({...newEv,name:e.target.value})} placeholder="z.B. Sommerfest 2025"/></F>
+                  <F label="Kategorie / Banner">
+                    <select style={inp} value={newEv.kategorie} onChange={e=>setNewEv({...newEv,kategorie:e.target.value})}>
+                      <option value="heimspiel">⚽ Heimspiel</option>
+                      <option value="vereinsfest">🎉 Vereinsfest</option>
+                      <option value="flag-football">🏈 Flag-Football</option>
+                      <option value="turnier">🏆 Turnier</option>
+                    </select>
+                  </F>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    <F label="Von"><input style={inp} type="date" value={newEv.datum} onChange={e=>setNewEv({...newEv,datum:e.target.value})}/></F>
+                    <F label="Bis (optional)"><input style={inp} type="date" value={newEv.datum_ende} onChange={e=>setNewEv({...newEv,datum_ende:e.target.value})}/></F>
+                  </div>
+                  <F label="Ort"><input style={inp} value={newEv.ort} onChange={e=>setNewEv({...newEv,ort:e.target.value})} placeholder="Boppard"/></F>
+                  <button style={btnPrimary} onClick={addEvent}>Weiter: Schichten anlegen →</button>
+                </div>
+              </Section>
+
+              {/* Bestehende Veranstaltungen – direkt bearbeiten */}
+              {events.length > 0 && (
+                <Section title="Bestehende Veranstaltungen">
+                  <p style={{ fontSize:11, color:'#9ca3af', marginBottom:10 }}>Klicke auf eine Veranstaltung um Schichten hinzuzufügen oder zu verwalten.</p>
+                  {events.map(ev => (
+                    <div key={ev.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                      <div style={{ flex:1, cursor:'pointer' }} onClick={() => { setActiveEvId(ev.id); setActiveEvName(ev.name); setNewSh(prev => ({ ...prev, veranstaltung_id: ev.id })); setEvStep(2) }}>
+                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{ev.name}</p>
+                        <p style={{ fontSize:10, color:'#9ca3af' }}>
+                          {new Date(ev.datum).toLocaleDateString('de-DE')} · {ev.schichten.length} Schichten
+                        </p>
+                      </div>
+                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                        <button onClick={() => { setActiveEvId(ev.id); setActiveEvName(ev.name); setNewSh(prev => ({ ...prev, veranstaltung_id: ev.id })); setEvStep(2) }}
+                          style={{ ...btnSm, background:'#e8f5ee', color:'#0d631b', fontSize:11 }}>
+                          Schichten
+                        </button>
+                        <button onClick={() => deleteVeranstaltung(ev)}
+                          style={{ width:32, height:32, borderRadius:8, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </Section>
+              )}
+            </>
+          )}
+
+          {/* ── SCHRITT 2: Schichten anlegen ── */}
+          {evStep === 2 && (
+            <>
+              {/* Übersicht bestehender Schichten */}
+              <Section title={`Schichten von ${activeEvName} (${activeEv?.schichten.length ?? 0})`}>
+                {!activeEv || activeEv.schichten.length === 0
+                  ? <Empty text="Noch keine Schichten – lege die erste an!" />
+                  : activeEv.schichten.map(s => {
+                    const pct = s.plaetze > 0 ? Math.round((s.belegt / s.plaetze) * 100) : 0
+                    const farbe = auslastungFarbe(pct)
+                    return (
+                      <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                        <div style={{ flex:1 }}>
+                          <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{s.bezeichnung}</p>
+                          <p style={{ fontSize:10, color:'#9ca3af' }}>{s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)} · {s.punkte} Pkt</p>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                            <div style={{ flex:1, height:4, background:'#f3f4f6', borderRadius:99, overflow:'hidden' }}>
+                              <div style={{ height:'100%', width:`${pct}%`, background: farbe, borderRadius:99 }} />
+                            </div>
+                            <span style={{ fontSize:10, fontWeight:700, color: farbe }}>{s.belegt}/{s.plaetze}</span>
+                          </div>
+                        </div>
+                        <button onClick={() => deleteSchicht(s)}
+                          style={{ width:28, height:28, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', marginLeft:10, flexShrink:0 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize:14, color:'#ef4444' }}>delete</span>
+                        </button>
+                      </div>
+                    )
+                  })
+                }
+              </Section>
+
+              {/* Neue Schicht anlegen */}
+              <Section title="Neue Schicht hinzufügen">
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  <F label="Bezeichnung"><input style={inp} value={newSh.bezeichnung} onChange={e=>setNewSh({...newSh,bezeichnung:e.target.value})} placeholder="z.B. Kasse – Vormittag"/></F>
+                  <F label="Kategorie">
+                    <select style={inp} value={newSh.kategorie_id} onChange={e=>setNewSh({...newSh,kategorie_id:e.target.value})}>
+                      <option value="">– keine –</option>
+                      {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+                    </select>
+                  </F>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    <F label="Von"><input style={inp} type="time" value={newSh.startzeit} onChange={e=>setNewSh({...newSh,startzeit:e.target.value})}/></F>
+                    <F label="Bis"><input style={inp} type="time" value={newSh.endzeit} onChange={e=>setNewSh({...newSh,endzeit:e.target.value})}/></F>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    <F label="Plätze"><input style={inp} type="number" min="1" value={newSh.plaetze} onChange={e=>setNewSh({...newSh,plaetze:parseInt(e.target.value)||1})}/></F>
+                    <F label="Punkte"><input style={inp} type="number" min="1" value={newSh.punkte} onChange={e=>setNewSh({...newSh,punkte:parseInt(e.target.value)||1})}/></F>
+                  </div>
+                  <F label="Aufgabe (optional)"><input style={inp} value={newSh.beschreibung} onChange={e=>setNewSh({...newSh,beschreibung:e.target.value})} placeholder="Kurze Beschreibung"/></F>
+                  <button style={btnPrimary} onClick={addShift}>+ Schicht anlegen</button>
+                </div>
+              </Section>
+
+              <button onClick={() => setEvStep(1)}
+                style={{ background:'none', border:'none', color:'#9ca3af', fontSize:12, cursor:'pointer', textAlign:'center', padding:'4px 0' }}>
+                ← Zurück zu Veranstaltungen
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -452,25 +506,22 @@ export default function Verwaltung(_: Props) {
             </div>
           </Section>
           <Section title={`Aktuelle Kategorien (${kategorien.length})`}>
-            {kategorien.length === 0
-              ? <Empty text="Noch keine Kategorien angelegt." />
-              : kategorien.map(k => (
-                <div key={k.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                  <div style={{ width:32, height:32, borderRadius:8, background:'#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize:16, color:'#0d631b' }}>label</span>
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{k.name}</p>
-                    <p style={{ fontSize:10, color:'#9ca3af' }}>{k.schichten_count ?? 0} Schichten</p>
-                  </div>
-                  <button onClick={() => deleteKategorie(k)}
-                    style={{ width:32, height:32, borderRadius:8, border:'none', background: (k.schichten_count ?? 0) > 0 ? '#f3f4f6' : '#fef2f2', cursor: (k.schichten_count ?? 0) > 0 ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity: (k.schichten_count ?? 0) > 0 ? .4 : 1 }}
-                    disabled={(k.schichten_count ?? 0) > 0}>
-                    <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
-                  </button>
+            {kategorien.length === 0 ? <Empty text="Noch keine Kategorien angelegt." /> : kategorien.map(k => (
+              <div key={k.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                <div style={{ width:32, height:32, borderRadius:8, background:'#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:16, color:'#0d631b' }}>label</span>
                 </div>
-              ))
-            }
+                <div style={{ flex:1 }}>
+                  <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{k.name}</p>
+                  <p style={{ fontSize:10, color:'#9ca3af' }}>{k.schichten_count ?? 0} Schichten</p>
+                </div>
+                <button onClick={() => deleteKategorie(k)}
+                  style={{ width:32, height:32, borderRadius:8, border:'none', background: (k.schichten_count ?? 0) > 0 ? '#f3f4f6' : '#fef2f2', cursor: (k.schichten_count ?? 0) > 0 ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity: (k.schichten_count ?? 0) > 0 ? .4 : 1 }}
+                  disabled={(k.schichten_count ?? 0) > 0}>
+                  <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
+                </button>
+              </div>
+            ))}
           </Section>
           <div style={{ background:'#fffbeb', borderRadius:12, padding:'10px 14px', display:'flex', gap:8 }}>
             <span className="material-symbols-outlined" style={{ fontSize:16, color:'#b45309' }}>warning</span>
@@ -522,9 +573,7 @@ export default function Verwaltung(_: Props) {
               <input style={inp} type="email" value={settings.admin_email} onChange={e=>setSettings({...settings,admin_email:e.target.value})} placeholder="admin@ssv-boppard.de"/>
             </F>
           </Section>
-          <button style={btnPrimary} onClick={saveSettings}>
-            {saved ? '✅ Gespeichert!' : 'Einstellungen speichern'}
-          </button>
+          <button style={btnPrimary} onClick={saveSettings}>{saved ? '✅ Gespeichert!' : 'Einstellungen speichern'}</button>
         </div>
       )}
 
@@ -532,8 +581,6 @@ export default function Verwaltung(_: Props) {
       {tab === 'mitglieder' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <InfoBox text="Lege temporäre User an (kein Login, keine Punkte) oder weise vorhandene Mitglieder direkt Schichten zu." />
-
-          {/* Temporären User anlegen */}
           <Section title="Temporären User anlegen">
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -543,9 +590,7 @@ export default function Verwaltung(_: Props) {
               <F label="E-Mail (optional)"><input style={inp} type="email" value={newTemp.email} onChange={e=>setNewTemp({...newTemp,email:e.target.value})} placeholder="max@beispiel.de"/></F>
               <F label="Typ">
                 <select style={inp} value={newTemp.typ} onChange={e=>setNewTemp({...newTemp,typ:e.target.value})}>
-                  <option>Mitglied</option>
-                  <option>Gast</option>
-                  <option>Extern</option>
+                  <option>Mitglied</option><option>Gast</option><option>Extern</option>
                 </select>
               </F>
               <button style={btnPrimary} onClick={addTempUser} disabled={tempLoading}>
@@ -554,82 +599,56 @@ export default function Verwaltung(_: Props) {
             </div>
           </Section>
 
-          {/* Userliste */}
           <Section title={`Alle User (${members.length})`}>
-            <input
-              style={{ ...inp, marginBottom:10 }}
-              placeholder="User suchen..."
-              value={userSearch}
-              onChange={e => setUserSearch(e.target.value)}
-            />
-            {members
-              .filter(m => {
-                const name = (m.display_name || m.name || '').toLowerCase()
-                return name.includes(userSearch.toLowerCase())
-              })
-              .map(m => (
-                <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                  <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : '#0d631b' }}>
-                      {(m.display_name || m.name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
-                      {m.display_name || m.name}
-                      {(m as any).is_temp && <span style={{ marginLeft:6, fontSize:9, background:'#e8f0fe', color:'#1a3a7a', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>{(m as any).temp_typ ?? 'TEMP'}</span>}
-                    </p>
-                    <p style={{ fontSize:10, color:'#9ca3af' }}>
-                      {(m as any).is_temp ? 'Kein Login · keine Punkte' : `${m.punkte} Pkt · ${m.email}`}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }}
-                    style={{ ...btnSm, background: selectedUser?.id === m.id ? '#0d631b' : '#e8f5ee', color: selectedUser?.id === m.id ? '#fff' : '#0d631b', fontSize:11 }}>
-                    {selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}
-                  </button>
+            <input style={{ ...inp, marginBottom:10 }} placeholder="User suchen..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
+            {members.filter(m => (m.display_name || m.name || '').toLowerCase().includes(userSearch.toLowerCase())).map(m => (
+              <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : '#0d631b' }}>
+                    {(m.display_name || m.name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
+                  </span>
                 </div>
-              ))
-            }
+                <div style={{ flex:1 }}>
+                  <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
+                    {m.display_name || m.name}
+                    {(m as any).is_temp && <span style={{ marginLeft:6, fontSize:9, background:'#e8f0fe', color:'#1a3a7a', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>{(m as any).temp_typ ?? 'TEMP'}</span>}
+                  </p>
+                  <p style={{ fontSize:10, color:'#9ca3af' }}>{(m as any).is_temp ? 'Kein Login · keine Punkte' : `${m.punkte} Pkt · ${m.email}`}</p>
+                </div>
+                <button onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }}
+                  style={{ ...btnSm, background: selectedUser?.id === m.id ? '#0d631b' : '#e8f5ee', color: selectedUser?.id === m.id ? '#fff' : '#0d631b', fontSize:11 }}>
+                  {selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}
+                </button>
+              </div>
+            ))}
           </Section>
 
-          {/* Schicht-Zuweisung */}
           {selectedUser && (
             <Section title={`Schichten zuweisen – ${selectedUser.display_name || selectedUser.name}`}>
-              {allSchichten.length === 0
-                ? <Empty text="Keine Schichten vorhanden." />
-                : allSchichten.map(s => {
-                  const voll = s.belegt >= s.plaetze
-                  const istZugewiesen = userBelegungen.includes(s.id)
-                  return (
-                    <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                      <div>
-                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
-                          {s.bezeichnung}
-                          {istZugewiesen && <span style={{ marginLeft:6, fontSize:9, background:'#e8f5ee', color:'#0d631b', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>✓ Dabei</span>}
-                        </p>
-                        <p style={{ fontSize:10, color:'#9ca3af' }}>
-                          {(s as any).veranstaltungen?.name} · {s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)} · {s.belegt}/{s.plaetze} belegt
-                        </p>
-                      </div>
-                      {istZugewiesen ? (
-                        <button
-                          onClick={() => { removeAssignment(selectedUser!, s); setUserBelegungen(prev => prev.filter(id => id !== s.id)) }}
-                          style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>
-                          Entfernen
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => { assignSchicht(selectedUser!, s); if (!voll) setUserBelegungen(prev => [...prev, s.id]) }}
-                          disabled={voll}
-                          style={{ ...btnSm, background: voll ? '#f3f4f6' : '#0d631b', color: voll ? '#9ca3af' : '#fff', fontSize:11, cursor: voll ? 'not-allowed' : 'pointer' }}>
-                          {voll ? 'Voll' : '+ Zuweisen'}
-                        </button>
-                      )}
+              {allSchichten.length === 0 ? <Empty text="Keine Schichten vorhanden." /> : allSchichten.map(s => {
+                const voll = s.belegt >= s.plaetze
+                const istZugewiesen = userBelegungen.includes(s.id)
+                return (
+                  <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                    <div>
+                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
+                        {s.bezeichnung}
+                        {istZugewiesen && <span style={{ marginLeft:6, fontSize:9, background:'#e8f5ee', color:'#0d631b', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>✓ Dabei</span>}
+                      </p>
+                      <p style={{ fontSize:10, color:'#9ca3af' }}>{(s as any).veranstaltungen?.name} · {s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)} · {s.belegt}/{s.plaetze} belegt</p>
                     </div>
-                  )
-                })
-              }
+                    {istZugewiesen ? (
+                      <button onClick={() => { removeAssignment(selectedUser!, s); setUserBelegungen(prev => prev.filter(id => id !== s.id)) }}
+                        style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Entfernen</button>
+                    ) : (
+                      <button onClick={() => { assignSchicht(selectedUser!, s); if (!voll) setUserBelegungen(prev => [...prev, s.id]) }}
+                        disabled={voll} style={{ ...btnSm, background: voll ? '#f3f4f6' : '#0d631b', color: voll ? '#9ca3af' : '#fff', fontSize:11, cursor: voll ? 'not-allowed' : 'pointer' }}>
+                        {voll ? 'Voll' : '+ Zuweisen'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </Section>
           )}
         </div>
@@ -640,29 +659,26 @@ export default function Verwaltung(_: Props) {
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <InfoBox text="Bei jeder Einlösung wird eine E-Mail gesendet. Die Punkte werden sofort beim Mitglied abgezogen." />
           <Section title="Einlösungs-Anfragen">
-            {reqs.length === 0
-              ? <Empty text="Noch keine Anfragen" />
-              : reqs.map(r => (
-                <div key={r.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                  <div>
-                    <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{(r.profiles as any)?.name}</p>
-                    <p style={{ fontSize:11, color:'#9ca3af' }}>{r.typ} · {r.punkte} Pkt</p>
-                  </div>
-                  <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                    {r.status === 'offen' ? (
-                      <>
-                        <button onClick={() => handleReq(r.id,'genehmigt')} style={{ ...btnSm, background:'#e8f5ee', color:'#0d631b' }}>✓</button>
-                        <button onClick={() => handleReq(r.id,'abgelehnt')} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444' }}>✕</button>
-                      </>
-                    ) : (
-                      <span style={{ fontSize:10, fontWeight:900, padding:'3px 10px', borderRadius:99, background: r.status==='genehmigt'?'#e8f5ee':'#fef2f2', color: r.status==='genehmigt'?'#0d631b':'#ef4444', fontFamily:'Lexend,sans-serif' }}>
-                        {r.status}
-                      </span>
-                    )}
-                  </div>
+            {reqs.length === 0 ? <Empty text="Noch keine Anfragen" /> : reqs.map(r => (
+              <div key={r.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                <div>
+                  <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{(r.profiles as any)?.name}</p>
+                  <p style={{ fontSize:11, color:'#9ca3af' }}>{r.typ} · {r.punkte} Pkt</p>
                 </div>
-              ))
-            }
+                <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                  {r.status === 'offen' ? (
+                    <>
+                      <button onClick={() => handleReq(r.id,'genehmigt')} style={{ ...btnSm, background:'#e8f5ee', color:'#0d631b' }}>✓</button>
+                      <button onClick={() => handleReq(r.id,'abgelehnt')} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444' }}>✕</button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize:10, fontWeight:900, padding:'3px 10px', borderRadius:99, background: r.status==='genehmigt'?'#e8f5ee':'#fef2f2', color: r.status==='genehmigt'?'#0d631b':'#ef4444', fontFamily:'Lexend,sans-serif' }}>
+                      {r.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </Section>
         </div>
       )}
@@ -670,7 +686,6 @@ export default function Verwaltung(_: Props) {
   )
 }
 
-// ── Hilfskomponenten ──
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
