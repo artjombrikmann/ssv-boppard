@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile, Veranstaltung, Schicht } from '../types'
+import { Profile, Schicht } from '../types'
 
 interface Props { profile: Profile; onTabChange: (tab: string) => void }
 
 export default function Home({ profile, onTabChange }: Props) {
-  const [shifts,     setShifts]     = useState<Schicht[]>([])
-  const [rank,       setRank]       = useState<string>('–')
-  const [nextShift,  setNextShift]  = useState<Schicht | null>(null)
+  const [shifts,    setShifts]    = useState<Schicht[]>([])
+  const [rank,      setRank]      = useState<string>('–')
+  const [nextShift, setNextShift] = useState<Schicht | null>(null)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     const { data: sh } = await supabase
       .from('schichten')
-      .select('*, veranstaltungen(name,typ,datum), kategorien(name)')
+      .select('*, veranstaltungen(name, datum), kategorien(name)')
       .order('startzeit')
 
     setShifts(sh ?? [])
@@ -39,7 +39,6 @@ export default function Home({ profile, onTabChange }: Props) {
   const progress = Math.min(100, Math.round((pts / nextBadgeReq) * 100))
   const nextBadgeName = pts < 10 ? 'Vereinshelfer' : pts < 50 ? 'Schichtprofi' : pts < 150 ? 'Vereinsheld' : 'Legende'
 
-  // Offene Schichten gruppiert nach Veranstaltung
   const offeneSchichten = shifts.filter(sh => sh.belegt < sh.plaetze)
   const grouped = offeneSchichten.reduce((acc, sh) => {
     const evName = (sh as any).veranstaltungen?.name ?? 'Ohne Veranstaltung'
@@ -124,7 +123,7 @@ export default function Home({ profile, onTabChange }: Props) {
         </div>
       )}
 
-      {/* Offene Schichten – gruppiert nach Veranstaltung */}
+      {/* Offene Schichten */}
       <div>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
           <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>Offene Schichten</p>
@@ -142,7 +141,6 @@ export default function Home({ profile, onTabChange }: Props) {
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {groupedList.map(group => (
               <div key={group.name}>
-                {/* Veranstaltungs-Header */}
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
                   <span className="material-symbols-outlined icon-fill" style={{ fontSize:16, color:'#0d631b' }}>event</span>
                   <div style={{ flex:1 }}>
@@ -160,7 +158,6 @@ export default function Home({ profile, onTabChange }: Props) {
                   </span>
                 </div>
 
-                {/* Schichten der Veranstaltung */}
                 <div style={{ display:'flex', flexDirection:'column', gap:8, paddingLeft:4 }}>
                   {group.schichten.slice(0, 3).map(sh => (
                     <ShiftCard key={sh.id} shift={sh} onTabChange={onTabChange} />
