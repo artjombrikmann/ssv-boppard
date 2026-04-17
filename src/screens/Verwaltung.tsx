@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient'
 import { Profile, Schichtbelegung, Veranstaltung, Einstellungen, GutscheinAnfrage, Kategorie, Schicht } from '../types'
 
 interface Props { profile: Profile; onTabChange: (tab: string) => void }
-type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'einloesungen'
+type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'einloesungen' | 'mitglieder'
 
 interface VeranstaltungMitAuslastung extends Veranstaltung {
   schichten: Schicht[]
@@ -28,6 +28,14 @@ export default function Verwaltung(_: Props) {
   const [saved,      setSaved]      = useState(false)
   const [toast,      setToast]      = useState('')
   const [expandedEv, setExpandedEv] = useState<number | null>(null)
+
+  // NEU – Mitglieder-Tab
+  const [selectedUser, setSelectedUser] = useState<Profile | null>(null)
+  const [userSearch,   setUserSearch]   = useState('')
+  const [newTemp,      setNewTemp]      = useState({ vorname:'', nachname:'', email:'', typ:'Mitglied' })
+  const [tempLoading,  setTempLoading]  = useState(false)
+  const [allSchichten, setAllSchichten] = useState<Schicht[]>([])
+  const [userBelegungen, setUserBelegungen] = useState<number[]>([])
 
   useEffect(() => { loadAll() }, [])
 
@@ -143,12 +151,81 @@ export default function Verwaltung(_: Props) {
     return '#ef4444'
   }
 
+  // NEU – Schichten für Zuweisung laden
+  async function loadAllSchichten(userId?: string) {
+    const { data } = await supabase.from('schichten')
+      .select('*, veranstaltungen(name)')
+      .order('startzeit')
+    setAllSchichten(data ?? [])
+
+    if (userId) {
+      const { data: bk } = await supabase.from('schichtbelegungen')
+        .select('schicht_id').eq('mitglied_id', userId)
+      setUserBelegungen((bk ?? []).map((b: any) => b.schicht_id))
+    }
+  }
+
+  // NEU – Temporären User anlegen
+  async function addTempUser() {
+    if (!newTemp.vorname.trim() || !newTemp.nachname.trim()) { showToast('❌ Vor- und Nachname pflicht'); return }
+    setTempLoading(true)
+    const name = `${newTemp.vorname.trim()} ${newTemp.nachname.trim()}`
+    const { error } = await supabase.from('profiles').insert({
+      id: crypto.randomUUID(),
+      name,
+      display_name: newTemp.vorname.trim(),
+      email: newTemp.email || `temp_${Date.now()}@ssv-boppard.intern`,
+      punkte: 0,
+      schichten_count: 0,
+      is_admin: false,
+      is_temp: true,
+      temp_typ: newTemp.typ,
+    })
+    if (error) showToast('❌ Fehler: ' + error.message)
+    else {
+      showToast(`✅ ${name} als temporärer User angelegt!`)
+      setNewTemp({ vorname:'', nachname:'', email:'', typ:'Mitglied' })
+      loadAll()
+    }
+    setTempLoading(false)
+  }
+
+  // NEU – Schicht zuweisen
+  async function assignSchicht(user: Profile, schicht: Schicht) {
+    // Prüfen ob schon belegt
+    const { data: existing } = await supabase.from('schichtbelegungen')
+      .select('id').eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
+    if (existing && existing.length > 0) { showToast('⚠️ Bereits eingetragen'); return }
+    if (schicht.belegt >= schicht.plaetze) { showToast('❌ Schicht ist voll'); return }
+
+    await supabase.from('schichtbelegungen').insert({
+      schicht_id: schicht.id, mitglied_id: user.id, status: 'Angemeldet'
+    })
+    await supabase.from('schichten').update({ belegt: schicht.belegt + 1 }).eq('id', schicht.id)
+    showToast(`✅ ${user.display_name || user.name} → ${schicht.bezeichnung}`)
+    loadAll()
+    loadAllSchichten()
+  }
+
+  // NEU – Zuweisung entfernen
+  async function removeAssignment(user: Profile, schicht: Schicht) {
+    const ok = window.confirm(`${user.display_name || user.name} aus "${schicht.bezeichnung}" austragen?`)
+    if (!ok) return
+    await supabase.from('schichtbelegungen').delete()
+      .eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
+    await supabase.from('schichten').update({ belegt: Math.max(0, schicht.belegt - 1) }).eq('id', schicht.id)
+    showToast('🗑️ Zuweisung entfernt')
+    loadAll()
+    loadAllSchichten()
+  }
+
   const TABS: { id: AdminTab; label: string }[] = [
     { id:'uebersicht',      label:'Übersicht' },
     { id:'veranstaltungen', label:'Events' },
     { id:'kategorien',      label:'Kategorien' },
     { id:'punkte',          label:'Punkte' },
     { id:'einloesungen',    label:'Einlösungen' },
+    { id:'mitglieder',      label:'User' },
   ]
 
   return (
@@ -448,6 +525,113 @@ export default function Verwaltung(_: Props) {
           <button style={btnPrimary} onClick={saveSettings}>
             {saved ? '✅ Gespeichert!' : 'Einstellungen speichern'}
           </button>
+        </div>
+      )}
+
+      {/* ── MITGLIEDER & ZUWEISUNG ── */}
+      {tab === 'mitglieder' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <InfoBox text="Lege temporäre User an (kein Login, keine Punkte) oder weise vorhandene Mitglieder direkt Schichten zu." />
+
+          {/* Temporären User anlegen */}
+          <Section title="Temporären User anlegen">
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                <F label="Vorname"><input style={inp} value={newTemp.vorname} onChange={e=>setNewTemp({...newTemp,vorname:e.target.value})} placeholder="Max"/></F>
+                <F label="Nachname"><input style={inp} value={newTemp.nachname} onChange={e=>setNewTemp({...newTemp,nachname:e.target.value})} placeholder="Mustermann"/></F>
+              </div>
+              <F label="E-Mail (optional)"><input style={inp} type="email" value={newTemp.email} onChange={e=>setNewTemp({...newTemp,email:e.target.value})} placeholder="max@beispiel.de"/></F>
+              <F label="Typ">
+                <select style={inp} value={newTemp.typ} onChange={e=>setNewTemp({...newTemp,typ:e.target.value})}>
+                  <option>Mitglied</option>
+                  <option>Gast</option>
+                  <option>Extern</option>
+                </select>
+              </F>
+              <button style={btnPrimary} onClick={addTempUser} disabled={tempLoading}>
+                {tempLoading ? 'Wird angelegt...' : 'Temporären User anlegen'}
+              </button>
+            </div>
+          </Section>
+
+          {/* Userliste */}
+          <Section title={`Alle User (${members.length})`}>
+            <input
+              style={{ ...inp, marginBottom:10 }}
+              placeholder="User suchen..."
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+            />
+            {members
+              .filter(m => {
+                const name = (m.display_name || m.name || '').toLowerCase()
+                return name.includes(userSearch.toLowerCase())
+              })
+              .map(m => (
+                <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                  <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : '#0d631b' }}>
+                      {(m.display_name || m.name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
+                    </span>
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
+                      {m.display_name || m.name}
+                      {(m as any).is_temp && <span style={{ marginLeft:6, fontSize:9, background:'#e8f0fe', color:'#1a3a7a', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>{(m as any).temp_typ ?? 'TEMP'}</span>}
+                    </p>
+                    <p style={{ fontSize:10, color:'#9ca3af' }}>
+                      {(m as any).is_temp ? 'Kein Login · keine Punkte' : `${m.punkte} Pkt · ${m.email}`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }}
+                    style={{ ...btnSm, background: selectedUser?.id === m.id ? '#0d631b' : '#e8f5ee', color: selectedUser?.id === m.id ? '#fff' : '#0d631b', fontSize:11 }}>
+                    {selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}
+                  </button>
+                </div>
+              ))
+            }
+          </Section>
+
+          {/* Schicht-Zuweisung */}
+          {selectedUser && (
+            <Section title={`Schichten zuweisen – ${selectedUser.display_name || selectedUser.name}`}>
+              {allSchichten.length === 0
+                ? <Empty text="Keine Schichten vorhanden." />
+                : allSchichten.map(s => {
+                  const voll = s.belegt >= s.plaetze
+                  const istZugewiesen = userBelegungen.includes(s.id)
+                  return (
+                    <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                      <div>
+                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
+                          {s.bezeichnung}
+                          {istZugewiesen && <span style={{ marginLeft:6, fontSize:9, background:'#e8f5ee', color:'#0d631b', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>✓ Dabei</span>}
+                        </p>
+                        <p style={{ fontSize:10, color:'#9ca3af' }}>
+                          {(s as any).veranstaltungen?.name} · {s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)} · {s.belegt}/{s.plaetze} belegt
+                        </p>
+                      </div>
+                      {istZugewiesen ? (
+                        <button
+                          onClick={() => { removeAssignment(selectedUser!, s); setUserBelegungen(prev => prev.filter(id => id !== s.id)) }}
+                          style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>
+                          Entfernen
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { assignSchicht(selectedUser!, s); if (!voll) setUserBelegungen(prev => [...prev, s.id]) }}
+                          disabled={voll}
+                          style={{ ...btnSm, background: voll ? '#f3f4f6' : '#0d631b', color: voll ? '#9ca3af' : '#fff', fontSize:11, cursor: voll ? 'not-allowed' : 'pointer' }}>
+                          {voll ? 'Voll' : '+ Zuweisen'}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })
+              }
+            </Section>
+          )}
         </div>
       )}
 

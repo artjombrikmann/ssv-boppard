@@ -34,33 +34,60 @@ export default function Login() {
     setLoading(false)
   }
 
- async function handleRegister() {
+  async function handleRegister() {
     clearMessages()
-    if (!name.trim())                    { setError('Bitte Vor- und Nachname eingeben.'); return }
+    if (!name.trim())                      { setError('Bitte Vor- und Nachname eingeben.'); return }
     if (name.trim().split(' ').length < 2) { setError('Bitte Vor- UND Nachname eingeben.'); return }
-    if (!email)                          { setError('Bitte E-Mail eingeben.'); return }
-    if (!validateEmail(email))           { setError('Bitte eine gültige E-Mail eingeben.'); return }
-    if (!password)                       { setError('Bitte Passwort eingeben.'); return }
-    if (password.length < 8)             { setError('Passwort muss mindestens 8 Zeichen haben.'); return }
-    if (password !== password2)          { setError('Passwörter stimmen nicht überein.'); return }
+    if (!email)                            { setError('Bitte E-Mail eingeben.'); return }
+    if (!validateEmail(email))             { setError('Bitte eine gültige E-Mail eingeben.'); return }
+    if (!password)                         { setError('Bitte Passwort eingeben.'); return }
+    if (password.length < 8)               { setError('Passwort muss mindestens 8 Zeichen haben.'); return }
+    if (password !== password2)            { setError('Passwörter stimmen nicht überein.'); return }
     if (!consentRangliste)  { setError('⚠️ Bitte der Ranglisten-Anzeige zustimmen.'); return }
     if (!consentDsgvo)      { setError('⚠️ Bitte die Datenschutzerklärung akzeptieren.'); return }
     if (!consentErinnerung) { setError('⚠️ Bitte den E-Mail-Erinnerungen zustimmen.'); return }
+
     setLoading(true)
-    const { data, error } = await supabase.auth.signUp({ email, password })
-    if (error || !data.user) { setError(error?.message ?? 'Fehler bei der Registrierung.'); setLoading(false); return }
 
-    // Vorname aus dem vollen Namen extrahieren (alles vor dem ersten Leerzeichen)
     const vorname = name.trim().split(' ')[0]
+    const fullName = name.trim()
 
-    await supabase.from('profiles').insert({
-      id: data.user.id, email, name,
-      display_name: vorname, // NEU
-      punkte: 0, schichten_count: 0, is_admin: false,
+    const { data, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: fullName,
+          display_name: vorname
+        }
+      }
+    })
+    if (authError || !data.user) {
+      setError(authError?.message ?? 'Fehler bei der Registrierung.')
+      setLoading(false)
+      return
+    }
+
+    const { error: profileError } = await supabase.from('profiles').insert({
+      id: data.user.id,
+      email,
+      name: fullName,
+      display_name: vorname,
+      punkte: 0,
+      schichten_count: 0,
+      is_admin: false,
       consent_rangliste: consentRangliste,
       consent_dsgvo: consentDsgvo,
       consent_erinnerung: consentErinnerung,
     })
+
+    if (profileError) {
+      console.error('PROFIL INSERT FEHLER:', profileError)
+      setError('Konto erstellt, aber Profil konnte nicht gespeichert werden: ' + profileError.message)
+      setLoading(false)
+      return
+    }
+
     setMode('erfolg')
     setLoading(false)
   }
@@ -144,24 +171,20 @@ export default function Login() {
             {mode === 'login' ? 'Anmelden' : mode === 'register' ? 'Konto erstellen' : 'Passwort zurücksetzen'}
           </h2>
 
-          {/* Fehler / Erfolg */}
           {error   && <div style={s.errorBox}><span className="material-symbols-outlined" style={{ fontSize:16 }}>error</span>{error}</div>}
           {message && <div style={s.successBox}><span className="material-symbols-outlined" style={{ fontSize:16 }}>check_circle</span>{message}</div>}
 
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            {/* Name (nur Registrierung) */}
             {mode === 'register' && (
               <Field label="Vor- und Nachname" icon="person">
                 <input className="input" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Max Mustermann" style={s.inputStyle} />
               </Field>
             )}
 
-            {/* E-Mail */}
             <Field label="E-Mail" icon="mail">
               <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="max@beispiel.de" style={s.inputStyle} />
             </Field>
 
-            {/* Passwort */}
             {mode !== 'reset' && (
               <Field label="Passwort" icon="lock">
                 <div style={{ position:'relative' }}>
@@ -173,14 +196,12 @@ export default function Login() {
               </Field>
             )}
 
-            {/* Passwort bestätigen */}
             {mode === 'register' && (
               <Field label="Passwort bestätigen" icon="lock">
                 <input className="input" type="password" value={password2} onChange={e => setPassword2(e.target.value)} placeholder="Passwort wiederholen" style={s.inputStyle} />
               </Field>
             )}
 
-            {/* Datenschutz Checkboxen */}
             {mode === 'register' && (
               <div style={{ borderTop:'1px solid #f3f4f6', paddingTop:16, display:'flex', flexDirection:'column', gap:12 }}>
                 <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.06em' }}>Zustimmungen (alle Pflicht)</p>
@@ -200,23 +221,20 @@ export default function Login() {
             )}
           </div>
 
-          {/* Submit Button */}
           <button style={{ ...s.btnPrimary, marginTop:20 }} onClick={mode === 'login' ? handleLogin : mode === 'register' ? handleRegister : handleReset} disabled={loading}>
             {loading ? 'Bitte warten...' : mode === 'login' ? 'Anmelden' : mode === 'register' ? 'Konto erstellen' : 'Reset-Link senden'}
           </button>
 
-          {/* Links */}
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, marginTop:14 }}>
-            {mode === 'login' && <>
+            {mode === 'login' && (
               <button style={s.linkBtn} onClick={() => { setMode('reset'); clearMessages() }}>Passwort vergessen?</button>
-            </>}
+            )}
             {mode !== 'login' && (
               <button style={s.linkBtn} onClick={() => { setMode('login'); clearMessages() }}>← Zurück zur Anmeldung</button>
             )}
           </div>
         </div>
 
-        {/* Registrieren Link */}
         {mode === 'login' && (
           <div style={{ textAlign:'center', marginTop:20 }}>
             <p style={{ color:'#5d5e61', fontSize:13 }}>Noch kein Konto?</p>

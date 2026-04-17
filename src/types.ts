@@ -16,6 +16,9 @@ export interface Profile {
   einwilligung_datum: string | null
   created_at: string
    display_name: string;
+     is_temp?: boolean        // ← NEU
+  temp_typ?: string | null // ← NEU
+  // ... rest bleibt gleich
 }
 
 export interface Veranstaltung {

@@ -40,9 +40,9 @@ export default function Marktplatz({ profile }: Props) {
     setTeilnehmer([])
     const { data } = await supabase
       .from('schichtbelegungen')
-      .select('profiles(name)')
+      .select('profiles(name, display_name)')
       .eq('schicht_id', s.id)
-    setTeilnehmer((data ?? []).map((b: any) => ({ name: b.profiles?.name ?? 'Unbekannt' })))
+    setTeilnehmer((data ?? []).map((b: any) => ({ name: b.profiles?.display_name || b.profiles?.name || 'Unbekannt' })))
   }
 
   async function joinShift(s: Schicht) {
