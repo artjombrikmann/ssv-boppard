@@ -1,23 +1,23 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 import { Profile, Schicht, Kategorie, Veranstaltung } from '../types'
-import { getBanner } from '../eventBanner' // NEU
+import { getBanner } from '../eventBanner'
 
 interface Props { profile: Profile; onTabChange: (tab: string) => void }
 
 export default function Marktplatz({ profile }: Props) {
-  const [schichten,    setSchichten]    = useState<Schicht[]>([])
-  const [kategorien,   setKategorien]   = useState<Kategorie[]>([])
-  const [veranstaltungen, setVeranstaltungen] = useState<Veranstaltung[]>([]) // NEU
-  const [myBookings,   setMyBookings]   = useState<number[]>([])
-  const [filter,       setFilter]       = useState<number | null>(null)
-  const [search,       setSearch]       = useState('')
-  const [selected,     setSelected]     = useState<Schicht | null>(null)
-  const [teilnehmer,   setTeilnehmer]   = useState<{ name: string }[]>([])
-  const [teilnehmerLoading, setTeilnehmerLoading] = useState(false)  
-  const [saving,       setSaving]       = useState(false)
-  const [showDanke,    setShowDanke]    = useState(false)
-  const [dankeShift,   setDankeShift]   = useState<Schicht | null>(null)
+  const [schichten,       setSchichten]       = useState<Schicht[]>([])
+  const [kategorien,      setKategorien]      = useState<Kategorie[]>([])
+  const [veranstaltungen, setVeranstaltungen] = useState<Veranstaltung[]>([])
+  const [myBookings,      setMyBookings]      = useState<number[]>([])
+  const [filter,          setFilter]          = useState<number | null>(null)
+  const [search,          setSearch]          = useState('')
+  const [selected,        setSelected]        = useState<Schicht | null>(null)
+  const [teilnehmer,      setTeilnehmer]      = useState<{ name: string }[]>([])
+  const [teilnehmerLoading, setTeilnehmerLoading] = useState(false)
+  const [saving,          setSaving]          = useState(false)
+  const [showDanke,       setShowDanke]       = useState(false)
+  const [dankeShift,      setDankeShift]      = useState<Schicht | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animRef   = useRef<number>(0)
 
@@ -25,15 +25,16 @@ export default function Marktplatz({ profile }: Props) {
 
   async function loadData() {
     const [{ data: sh }, { data: bk }, { data: kat }, { data: ev }] = await Promise.all([
-      supabase.from('schichten').select('*, veranstaltungen(name,typ), kategorien(name)').order('startzeit'),
+      // FIX: typ aus dem Select entfernt
+      supabase.from('schichten').select('*, veranstaltungen(name), kategorien(name)').order('startzeit'),
       supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', profile.id),
       supabase.from('kategorien').select('*').order('name'),
-      supabase.from('veranstaltungen').select('*'), // NEU
+      supabase.from('veranstaltungen').select('*'),
     ])
     setSchichten(sh ?? [])
     setMyBookings((bk ?? []).map((b: any) => b.schicht_id))
     setKategorien(kat ?? [])
-    setVeranstaltungen(ev ?? []) // NEU
+    setVeranstaltungen(ev ?? [])
   }
 
   async function openDetail(s: Schicht) {
@@ -118,10 +119,11 @@ export default function Marktplatz({ profile }: Props) {
 
   const grouped = filtered.reduce((acc, s) => {
     const key = s.veranstaltung_id
-    if (!acc[key]) acc[key] = { name: s.veranstaltungen?.name ?? 'Unbekannt', typ: s.veranstaltungen?.typ ?? '', shifts: [] }
+    // FIX: typ entfernt aus grouped
+    if (!acc[key]) acc[key] = { name: s.veranstaltungen?.name ?? 'Unbekannt', shifts: [] }
     acc[key].shifts.push(s)
     return acc
-  }, {} as Record<number, { name: string; typ: string; shifts: Schicht[] }>)
+  }, {} as Record<number, { name: string; shifts: Schicht[] }>)
 
   return (
     <div style={{ padding:'20px 16px', display:'flex', flexDirection:'column', gap:16 }}>
@@ -146,8 +148,8 @@ export default function Marktplatz({ profile }: Props) {
           Alle
         </button>
         {kategorien.map(k => (
-          <button key={k.id} onClick={() => setFilter(k.id)}
-            style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === k.id ? '#0d631b' : '#eceeec', color: filter === k.id ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
+          <button key={k.id} onClick={() => setFilter(k.id as any)}
+            style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === (k.id as any) ? '#0d631b' : '#eceeec', color: filter === (k.id as any) ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
             {k.name}
           </button>
         ))}
@@ -155,13 +157,11 @@ export default function Marktplatz({ profile }: Props) {
 
       {/* Schichten nach Veranstaltung */}
       {Object.entries(grouped).map(([evId, gruppe]) => {
-        // NEU – Banner anhand der Veranstaltungs-Kategorie bestimmen
         const ev = veranstaltungen.find(v => v.id === Number(evId))
         const banner = getBanner(ev?.kategorie as any)
 
         return (
           <div key={evId} style={{ background:'#fff', borderRadius:24, overflow:'hidden', border:'1px solid #f3f4f6' }}>
-            {/* NEU – dynamischer Banner */}
             <div style={{
               height: 90,
               background: banner.gradient,
@@ -186,7 +186,6 @@ export default function Marktplatz({ profile }: Props) {
                   </p>
                 )}
               </div>
-              {/* Großes Kategorie-Icon als dekorativer Hintergrund */}
               <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', fontSize:52, opacity:.25, lineHeight:1 }}>
                 {banner.icon}
               </span>

@@ -5,38 +5,35 @@ export interface Profile {
   punkte: number
   schichten_count: number
   is_admin: boolean
-  // Datenschutz-Zustimmungen (bei Registrierung)
   consent_rangliste: boolean
   consent_dsgvo: boolean
   consent_erinnerung: boolean
-  // Neu: Datenschutz aus Supabase-Umbau
   datenschutz_akzeptiert: boolean
   nutzungsbedingungen_akzeptiert: boolean
   newsletter_akzeptiert: boolean
   einwilligung_datum: string | null
   created_at: string
-   display_name: string;
-     is_temp?: boolean        // ← NEU
-  temp_typ?: string | null // ← NEU
-  // ... rest bleibt gleich
+  display_name: string
+  is_temp?: boolean
+  temp_typ?: string | null
 }
 
 export interface Veranstaltung {
   id: number
   name: string
-  typ: string
+  // typ entfernt – Spalte wurde aus DB gelöscht, Kategorie übernimmt das
   datum: string
-  datum_ende?: string | null 
+  datum_ende?: string | null
   ort: string
   status: string
-  kategorie: 'heimspiel' | 'vereinsfest' | 'flag-football' | 'turnier'; 
+  kategorie: 'heimspiel' | 'vereinsfest' | 'flag-football' | 'turnier'
 }
 
 export interface Kategorie {
-  id: string          // ← UUID (war number)
+  id: string
   name: string
-  farbe: string       // Neu: Hex-Farbe für UI
-  punkte: number      // Neu: Standard-Punkte pro Schicht
+  farbe: string
+  punkte: number
   schichten_count?: number
   created_at: string
 }
@@ -45,15 +42,15 @@ export interface Schicht {
   id: number
   bezeichnung: string
   veranstaltung_id: number
-  kategorie_id: string | null   // ← UUID (war number)
+  kategorie_id: string | null
   startzeit: string
   endzeit: string
   plaetze: number
   belegt: number
   punkte: number
   beschreibung: string
-  veranstaltungen?: { name: string; typ: string }
-  kategorien?: { name: string; farbe: string }  // Neu: farbe
+  veranstaltungen?: { name: string } // typ entfernt
+  kategorien?: { name: string; farbe: string }
 }
 
 export interface Schichtbelegung {
@@ -69,38 +66,38 @@ export interface Schichtbelegung {
     punkte: number
     startzeit: string
     endzeit: string
-    veranstaltungen?: { name: string }
-    kategorien?: { name: string; farbe: string }  // Neu
+    veranstaltungen?: { name: string } // typ entfernt
+    kategorien?: { name: string; farbe: string }
   }
 }
 
 export interface ShopArtikel {
-  id: string          // ← UUID (war number)
+  id: string
   name: string
   beschreibung: string
-  punkte_kosten: number   // ← umbenannt von punkte (passt zur DB-Spalte)
-  bild_url?: string       // Neu: optional
-  verfuegbar: boolean     // ← umbenannt von aktiv (passt zur DB-Spalte)
+  punkte_kosten: number
+  bild_url?: string
+  verfuegbar: boolean
   created_at: string
 }
 
 export interface ShopAnfrage {
-  id: string          // ← UUID (war number)
-  user_id: string     // ← umbenannt von mitglied_id (passt zur DB-Spalte)
-  preis_id: string    // ← umbenannt von artikel_id
-  preis_name: string  // Neu: Snapshot des Namens
+  id: string
+  user_id: string
+  preis_id: string
+  preis_name: string
   punkte_kosten: number
   status: 'offen' | 'bearbeitet' | 'abgelehnt'
-  notiz?: string      // Neu: Admin-Notiz
+  notiz?: string
   created_at: string
   profiles?: { name: string; email: string }
-  preise?: { name: string }   // ← umbenannt von shop_artikel
+  preise?: { name: string }
 }
 
 export interface Punkteregel {
-  id: string          // UUID
+  id: string
   bezeichnung: string
-  punkte: number      // positiv = Bonus, negativ = Abzug
+  punkte: number
   kategorie_id: string | null
   aktiv: boolean
   created_at: string
@@ -109,18 +106,15 @@ export interface Punkteregel {
 
 export interface Einstellungen {
   id: number
-  // Punkteregeln
-  punkte_kurz: number    // < 3h
-  punkte_normal: number  // 3-6h
-  punkte_lang: number    // > 6h
-  punkte_sonder: number  // Sondereinsatz
-  bonus_turnier: number  // Bonus bei Fußball-Turnier
-  bonus_fest: number     // Bonus bei Vereinsfest
-  // Shop
-  admin_email: string    // E-Mail für Einlösungsbenachrichtigungen
+  punkte_kurz: number
+  punkte_normal: number
+  punkte_lang: number
+  punkte_sonder: number
+  bonus_turnier: number
+  bonus_fest: number
+  admin_email: string
 }
 
-// GutscheinAnfrage bleibt für Rückwärtskompatibilität erhalten
 export interface GutscheinAnfrage {
   id: number
   mitglied_id: string
