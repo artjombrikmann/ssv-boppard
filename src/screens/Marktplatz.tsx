@@ -10,7 +10,7 @@ export default function Marktplatz({ profile }: Props) {
   const [kategorien,      setKategorien]      = useState<Kategorie[]>([])
   const [veranstaltungen, setVeranstaltungen] = useState<Veranstaltung[]>([])
   const [myBookings,      setMyBookings]      = useState<number[]>([])
-  const [filter,          setFilter]          = useState<number | null>(null)
+  const [filter,          setFilter]          = useState<string | null>(null)
   const [search,          setSearch]          = useState('')
   const [selected,        setSelected]        = useState<Schicht | null>(null)
   const [teilnehmer,      setTeilnehmer]      = useState<{ name: string }[]>([])
@@ -25,11 +25,10 @@ export default function Marktplatz({ profile }: Props) {
 
   async function loadData() {
     const [{ data: sh }, { data: bk }, { data: kat }, { data: ev }] = await Promise.all([
-      // FIX: typ aus dem Select entfernt
       supabase.from('schichten').select('*, veranstaltungen(name), kategorien(name)').order('startzeit'),
       supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', profile.id),
       supabase.from('kategorien').select('*').order('name'),
-      supabase.from('veranstaltungen').select('*'),
+      supabase.from('veranstaltungen').select('id, name, datum, datum_ende, ort, status, kategorie'),
     ])
     setSchichten(sh ?? [])
     setMyBookings((bk ?? []).map((b: any) => b.schicht_id))
@@ -45,7 +44,9 @@ export default function Marktplatz({ profile }: Props) {
       .from('schichtbelegungen')
       .select('profiles(name, display_name)')
       .eq('schicht_id', s.id)
-    setTeilnehmer((data ?? []).map((b: any) => ({ name: b.profiles?.display_name || b.profiles?.name || 'Unbekannt' })))
+    setTeilnehmer((data ?? []).map((b: any) => ({
+      name: b.profiles?.display_name || b.profiles?.name || 'Unbekannt'
+    })))
     setTeilnehmerLoading(false)
   }
 
@@ -73,6 +74,7 @@ export default function Marktplatz({ profile }: Props) {
   function closeDanke() { setShowDanke(false); stopKonfetti() }
 
   const FARBEN = ['#0d631b','#86efac','#fff','#fde68a','#f87171','#60a5fa']
+
   function startKonfetti() {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -104,10 +106,14 @@ export default function Marktplatz({ profile }: Props) {
     }
     draw()
   }
+
   function stopKonfetti() {
     cancelAnimationFrame(animRef.current)
     const canvas = canvasRef.current
-    if (canvas) { canvas.style.display = 'none'; canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height) }
+    if (canvas) {
+      canvas.style.display = 'none'
+      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+    }
   }
 
   const isMine = (s: Schicht) => myBookings.includes(s.id)
@@ -119,7 +125,6 @@ export default function Marktplatz({ profile }: Props) {
 
   const grouped = filtered.reduce((acc, s) => {
     const key = s.veranstaltung_id
-    // FIX: typ entfernt aus grouped
     if (!acc[key]) acc[key] = { name: s.veranstaltungen?.name ?? 'Unbekannt', shifts: [] }
     acc[key].shifts.push(s)
     return acc
@@ -134,42 +139,31 @@ export default function Marktplatz({ profile }: Props) {
         <p style={{ color:'#5d5e61', fontSize:13, marginTop:2 }}>Sichere dir deinen Platz beim nächsten Event.</p>
       </div>
 
-      {/* Suche */}
       <div style={{ position:'relative' }}>
         <span className="material-symbols-outlined" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:18, color:'#9ca3af' }}>search</span>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Schicht suchen..."
           style={{ width:'100%', padding:'10px 14px 10px 38px', border:'1.5px solid #e5e7eb', borderRadius:99, fontSize:13, fontFamily:'Manrope,sans-serif', outline:'none', background:'#fff' }} />
       </div>
 
-      {/* Filter */}
       <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
         <button onClick={() => setFilter(null)}
           style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === null ? '#0d631b' : '#eceeec', color: filter === null ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
           Alle
         </button>
         {kategorien.map(k => (
-          <button key={k.id} onClick={() => setFilter(k.id as any)}
-            style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === (k.id as any) ? '#0d631b' : '#eceeec', color: filter === (k.id as any) ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
+          <button key={k.id} onClick={() => setFilter(filter === k.id ? null : k.id)}
+            style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === k.id ? '#0d631b' : '#eceeec', color: filter === k.id ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
             {k.name}
           </button>
         ))}
       </div>
 
-      {/* Schichten nach Veranstaltung */}
       {Object.entries(grouped).map(([evId, gruppe]) => {
         const ev = veranstaltungen.find(v => v.id === Number(evId))
         const banner = getBanner(ev?.kategorie as any)
-
         return (
           <div key={evId} style={{ background:'#fff', borderRadius:24, overflow:'hidden', border:'1px solid #f3f4f6' }}>
-            <div style={{
-              height: 90,
-              background: banner.gradient,
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'flex-end',
-              padding: '12px 16px',
-            }}>
+            <div style={{ height:90, background: banner.gradient, position:'relative', display:'flex', alignItems:'flex-end', padding:'12px 16px' }}>
               <div>
                 <span style={{ background:'rgba(255,255,255,.2)', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 8px', borderRadius:4, textTransform:'uppercase', letterSpacing:'.06em' }}>
                   {banner.label}
@@ -190,7 +184,6 @@ export default function Marktplatz({ profile }: Props) {
                 {banner.icon}
               </span>
             </div>
-
             <div style={{ padding:'12px', display:'flex', flexDirection:'column', gap:8 }}>
               {gruppe.shifts.map(s => (
                 <ShiftItem key={s.id} shift={s} isMine={isMine(s)} isFull={isFull(s)} onClick={() => openDetail(s)} />
@@ -207,7 +200,6 @@ export default function Marktplatz({ profile }: Props) {
         </div>
       )}
 
-      {/* Detail Modal */}
       {selected && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}
           onClick={() => setSelected(null)}>
@@ -226,30 +218,28 @@ export default function Marktplatz({ profile }: Props) {
 
             {selected.belegt > 0 && (
               <div style={{ marginTop:16 }}>
-                <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>
-                  Bereits dabei
-                </p>
+                <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>Bereits dabei</p>
                 {teilnehmerLoading
                   ? <p style={{ fontSize:12, color:'#9ca3af' }}>Wird geladen...</p>
                   : teilnehmer.length === 0
                     ? <p style={{ fontSize:12, color:'#9ca3af' }}>Keine Teilnehmer gefunden.</p>
                     : (
-                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                      {teilnehmer.map((t, i) => (
-                        <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'#f8faf8', borderRadius:10 }}>
-                          <div style={{ width:30, height:30, borderRadius:'50%', background:'#e8f5ee', border:'1.5px solid #0d631b', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                            <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color:'#0d631b' }}>
-                              {t.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
-                            </span>
+                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                        {teilnehmer.map((t, i) => (
+                          <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'#f8faf8', borderRadius:10 }}>
+                            <div style={{ width:30, height:30, borderRadius:'50%', background:'#e8f5ee', border:'1.5px solid #0d631b', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                              <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color:'#0d631b' }}>
+                                {t.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
+                              </span>
+                            </div>
+                            <span style={{ fontFamily:'Manrope,sans-serif', fontWeight:600, fontSize:13 }}>{t.name}</span>
+                            {t.name === profile.name && (
+                              <span style={{ marginLeft:'auto', fontSize:9, fontWeight:900, background:'#dcfce7', color:'#16a34a', padding:'2px 7px', borderRadius:99 }}>Du</span>
+                            )}
                           </div>
-                          <span style={{ fontFamily:'Manrope,sans-serif', fontWeight:600, fontSize:13 }}>{t.name}</span>
-                          {t.name === profile.name && (
-                            <span style={{ marginLeft:'auto', fontSize:9, fontWeight:900, background:'#dcfce7', color:'#16a34a', padding:'2px 7px', borderRadius:99 }}>Du</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )
+                        ))}
+                      </div>
+                    )
                 }
               </div>
             )}
@@ -269,7 +259,6 @@ export default function Marktplatz({ profile }: Props) {
         </div>
       )}
 
-      {/* Danke Overlay */}
       {showDanke && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:998, display:'flex', alignItems:'center', justifyContent:'center' }}>
           <div style={{ background:'#fff', borderRadius:24, padding:32, textAlign:'center', maxWidth:300, width:'90%' }}>
