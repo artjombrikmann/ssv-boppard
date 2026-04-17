@@ -14,6 +14,7 @@ export default function Marktplatz({ profile }: Props) {
   const [search,       setSearch]       = useState('')
   const [selected,     setSelected]     = useState<Schicht | null>(null)
   const [teilnehmer,   setTeilnehmer]   = useState<{ name: string }[]>([])
+  const [teilnehmerLoading, setTeilnehmerLoading] = useState(false)  
   const [saving,       setSaving]       = useState(false)
   const [showDanke,    setShowDanke]    = useState(false)
   const [dankeShift,   setDankeShift]   = useState<Schicht | null>(null)
@@ -38,11 +39,13 @@ export default function Marktplatz({ profile }: Props) {
   async function openDetail(s: Schicht) {
     setSelected(s)
     setTeilnehmer([])
+    setTeilnehmerLoading(true)
     const { data } = await supabase
       .from('schichtbelegungen')
       .select('profiles(name, display_name)')
       .eq('schicht_id', s.id)
     setTeilnehmer((data ?? []).map((b: any) => ({ name: b.profiles?.display_name || b.profiles?.name || 'Unbekannt' })))
+    setTeilnehmerLoading(false)
   }
 
   async function joinShift(s: Schicht) {
@@ -227,9 +230,11 @@ export default function Marktplatz({ profile }: Props) {
                 <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>
                   Bereits dabei
                 </p>
-                {teilnehmer.length === 0
+                {teilnehmerLoading
                   ? <p style={{ fontSize:12, color:'#9ca3af' }}>Wird geladen...</p>
-                  : (
+                  : teilnehmer.length === 0
+                    ? <p style={{ fontSize:12, color:'#9ca3af' }}>Keine Teilnehmer gefunden.</p>
+                    : (
                     <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                       {teilnehmer.map((t, i) => (
                         <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'#f8faf8', borderRadius:10 }}>
