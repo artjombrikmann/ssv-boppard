@@ -119,9 +119,14 @@ export default function Marktplatz({ profile }: Props) {
   const isMine = (s: Schicht) => myBookings.includes(s.id)
   const isFull = (s: Schicht) => s.belegt >= s.plaetze
 
-  const filtered = schichten
-    .filter(s => filter === null || s.kategorie_id === filter)
-    .filter(s => !search || s.bezeichnung.toLowerCase().includes(search.toLowerCase()))
+ const aktiveEventIds = veranstaltungen
+  .filter(v => v.status !== 'Abgeschlossen')
+  .map(v => v.id)
+
+const filtered = schichten
+  .filter(s => aktiveEventIds.includes(s.veranstaltung_id))
+  .filter(s => filter === null || s.kategorie_id === filter)
+  .filter(s => !search || s.bezeichnung.toLowerCase().includes(search.toLowerCase()))
 
   const grouped = filtered.reduce((acc, s) => {
     const key = s.veranstaltung_id
