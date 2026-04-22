@@ -36,6 +36,7 @@ export default function Verwaltung(_: Props) {
   const [tempLoading,    setTempLoading]    = useState(false)
   const [allSchichten,   setAllSchichten]   = useState<Schicht[]>([])
   const [userBelegungen, setUserBelegungen] = useState<number[]>([])
+  const [loeschenUserId, setLoeschenUserId] = useState<string | null>(null)
 
   useEffect(() => { loadAll() }, [])
 
@@ -177,12 +178,11 @@ export default function Verwaltung(_: Props) {
   }
 
   async function userLoeschen(userId: string) {
-    const ok = window.confirm('Diesen unbestätigten Account wirklich löschen?')
-    if (!ok) return
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
     const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/account-loeschen`,
+      `${supabaseUrl}/functions/v1/account-loeschen`,
       {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
@@ -192,6 +192,7 @@ export default function Verwaltung(_: Props) {
     const data = await res.json()
     if (data.erfolg) { showToast('🗑️ Account gelöscht'); loadAll() }
     else showToast('❌ Fehler: ' + data.fehler)
+    setLoeschenUserId(null)
   }
 
   async function removeAssignment(user: Profile, schicht: Schicht) {
@@ -541,7 +542,7 @@ export default function Verwaltung(_: Props) {
                   <div style={{ display:'flex', gap:6 }}>
                     <button onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }} style={{ ...btnSm, background: selectedUser?.id === m.id ? '#0d631b' : '#e8f5ee', color: selectedUser?.id === m.id ? '#fff' : '#0d631b', fontSize:11 }}>{selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}</button>
                     {!bestaetigt && (
-                      <button onClick={() => userLoeschen(m.id)} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Löschen</button>
+                      <button onClick={() => setLoeschenUserId(m.id)} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Löschen</button>
                     )}
                   </div>
                 </div>
@@ -587,6 +588,26 @@ export default function Verwaltung(_: Props) {
               </div>
             ))}
           </Section>
+        </div>
+      )}
+      {loeschenUserId && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
+          <div style={{ background:'#fff', borderRadius:16, padding:28, maxWidth:320, width:'90%' }}>
+            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:16, marginBottom:8, color:'#1a1a1a' }}>Account löschen?</p>
+            <p style={{ fontSize:13, color:'#555', marginBottom:20, lineHeight:1.6 }}>
+              Dieser unbestätigte Account wird unwiderruflich gelöscht.
+            </p>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setLoeschenUserId(null)}
+                style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #e5e7eb', background:'none', fontSize:13, cursor:'pointer', color:'#555' }}>
+                Abbrechen
+              </button>
+              <button onClick={() => userLoeschen(loeschenUserId)}
+                style={{ flex:1, padding:'10px', borderRadius:10, border:'none', background:'#ef4444', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>
+                Löschen
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
