@@ -76,15 +76,35 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
       .then(({ data }) => { if (data) setSettings(data); });
   }, []);
 
-  async function handleRedeem(v: (typeof VOUCHERS)[0]) {
+ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
     const req = settings[v.ptsKey] as number;
     if ((profile.punkte ?? 0) < req) return;
+
     await supabase.from("gutschein_anfragen").insert({
       mitglied_id: profile.id,
       typ: v.id,
       punkte: req,
       status: "offen",
     });
+
+    // Mail an Admin schicken
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      await fetch(`${supabaseUrl}/functions/v1/gutschein-anfrage`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          mitglied_id: profile.id,
+          typ: v.id,
+          punkte: req,
+        }),
+      });
+    }
+
     setRedeemType(null);
     setDone(true);
   }
