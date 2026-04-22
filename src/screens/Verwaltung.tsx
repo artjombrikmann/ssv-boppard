@@ -176,6 +176,24 @@ export default function Verwaltung(_: Props) {
     loadAll(); loadAllSchichten()
   }
 
+  async function userLoeschen(userId: string) {
+    const ok = window.confirm('Diesen unbestätigten Account wirklich löschen?')
+    if (!ok) return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/account-loeschen`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      }
+    )
+    const data = await res.json()
+    if (data.erfolg) { showToast('🗑️ Account gelöscht'); loadAll() }
+    else showToast('❌ Fehler: ' + data.fehler)
+  }
+
   async function removeAssignment(user: Profile, schicht: Schicht) {
     const ok = window.confirm(`${user.display_name || user.name} aus "${schicht.bezeichnung}" austragen?`)
     if (!ok) return
@@ -505,18 +523,30 @@ export default function Verwaltung(_: Props) {
           </Section>
           <Section title={`Alle User (${members.length})`}>
             <input style={{ ...inp, marginBottom:10 }} placeholder="User suchen..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
-            {members.filter(m => (m.display_name || m.name || '').toLowerCase().includes(userSearch.toLowerCase())).map(m => (
-              <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : '#0d631b' }}>{(m.display_name || m.name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}</span>
+            {members.filter(m => (m.display_name || m.name || '').toLowerCase().includes(userSearch.toLowerCase())).map(m => {
+              const bestaetigt = (m as any).email_bestaetigt ?? true
+              return (
+                <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb', opacity: bestaetigt ? 1 : 0.5 }}>
+                  <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : '#0d631b' }}>{(m.display_name || m.name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}</span>
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
+                      {m.display_name || m.name}
+                      {(m as any).is_temp && <span style={{ marginLeft:6, fontSize:9, background:'#e8f0fe', color:'#1a3a7a', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>{(m as any).temp_typ ?? 'TEMP'}</span>}
+                      {!bestaetigt && <span style={{ marginLeft:6, fontSize:9, background:'#fef2f2', color:'#ef4444', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>Unbestätigt</span>}
+                    </p>
+                    <p style={{ fontSize:10, color:'#9ca3af' }}>{(m as any).is_temp ? 'Kein Login · keine Punkte' : `${m.punkte} Pkt · ${m.email}`}</p>
+                  </div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }} style={{ ...btnSm, background: selectedUser?.id === m.id ? '#0d631b' : '#e8f5ee', color: selectedUser?.id === m.id ? '#fff' : '#0d631b', fontSize:11 }}>{selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}</button>
+                    {!bestaetigt && (
+                      <button onClick={() => userLoeschen(m.id)} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Löschen</button>
+                    )}
+                  </div>
                 </div>
-                <div style={{ flex:1 }}>
-                  <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{m.display_name || m.name}{(m as any).is_temp && <span style={{ marginLeft:6, fontSize:9, background:'#e8f0fe', color:'#1a3a7a', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>{(m as any).temp_typ ?? 'TEMP'}</span>}</p>
-                  <p style={{ fontSize:10, color:'#9ca3af' }}>{(m as any).is_temp ? 'Kein Login · keine Punkte' : `${m.punkte} Pkt · ${m.email}`}</p>
-                </div>
-                <button onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }} style={{ ...btnSm, background: selectedUser?.id === m.id ? '#0d631b' : '#e8f5ee', color: selectedUser?.id === m.id ? '#fff' : '#0d631b', fontSize:11 }}>{selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}</button>
-              </div>
-            ))}
+              )
+            })}
           </Section>
           {selectedUser && (
             <Section title={`Schichten zuweisen – ${selectedUser.display_name || selectedUser.name}`}>
