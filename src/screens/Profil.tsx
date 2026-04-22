@@ -52,13 +52,16 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
   const [redeemType, setRedeemType] = useState<(typeof VOUCHERS)[0] | null>(null);
   const [done, setDone] = useState(false);
 
-  // NEU – Konto bearbeiten
   const [showEdit, setShowEdit]       = useState(false);
   const [displayName, setDisplayName] = useState(profile.display_name || profile.name?.split(" ")[0] || "");
   const [newPw, setNewPw]             = useState("");
   const [confirmPw, setConfirmPw]     = useState("");
   const [editMsg, setEditMsg]         = useState("");
   const [editLoading, setEditLoading] = useState(false);
+
+  // Account löschen
+  const [loeschenSchritt, setLoeschenSchritt] = useState<0 | 1 | 2>(0);
+  const [loeschenLaed, setLoeschenLaed]       = useState(false);
 
   useEffect(() => {
     supabase
@@ -86,39 +89,62 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
     setDone(true);
   }
 
-  // NEU – Anzeigename speichern
   async function saveDisplayName() {
-  if (!displayName.trim()) { setEditMsg("❌ Name darf nicht leer sein."); return; }
-  setEditLoading(true);
-  const { error } = await supabase  // kein "data" hier
-    .from("profiles")
-    .update({ display_name: displayName.trim() })
-    .eq("id", profile.id)
-
-  console.log("ERROR:", error)
-
-  if (error) {
-    setEditMsg("❌ Fehler: " + error.message);
-  } else {
-    setEditMsg("✅ Name gespeichert!");
-    onProfileUpdate({ ...profile, display_name: displayName.trim() });
+    if (!displayName.trim()) { setEditMsg("❌ Name darf nicht leer sein."); return; }
+    setEditLoading(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ display_name: displayName.trim() })
+      .eq("id", profile.id);
+    if (error) {
+      setEditMsg("❌ Fehler: " + error.message);
+    } else {
+      setEditMsg("✅ Name gespeichert!");
+      onProfileUpdate({ ...profile, display_name: displayName.trim() });
+    }
+    setEditLoading(false);
   }
-  setEditLoading(false);
-}
-  // NEU – Passwort ändern
+
   async function changePassword() {
-    if (newPw.length < 8)      { setEditMsg("❌ Passwort min. 8 Zeichen."); return; }
-    if (newPw !== confirmPw)   { setEditMsg("❌ Passwörter stimmen nicht überein."); return; }
+    if (newPw.length < 8)    { setEditMsg("❌ Passwort min. 8 Zeichen."); return; }
+    if (newPw !== confirmPw) { setEditMsg("❌ Passwörter stimmen nicht überein."); return; }
     setEditLoading(true);
     const { error } = await supabase.auth.updateUser({ password: newPw });
     if (error) {
       setEditMsg("❌ " + error.message);
     } else {
       setEditMsg("✅ Passwort geändert!");
-      setNewPw("");
-      setConfirmPw("");
+      setNewPw(""); setConfirmPw("");
     }
     setEditLoading(false);
+  }
+
+  async function handleAccountLoeschen() {
+    setLoeschenLaed(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Keine Session");
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/account-loeschen`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const data = await res.json();
+      if (!res.ok || !data.erfolg) throw new Error(data.fehler ?? "Unbekannter Fehler");
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch (err) {
+      setEditMsg("❌ Fehler: " + String(err));
+    } finally {
+      setLoeschenLaed(false);
+      setLoeschenSchritt(0);
+    }
   }
 
   const pts = profile.punkte ?? 0;
@@ -127,7 +153,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
 
   return (
     <div>
-      {/* ── Header ── */}
+      {/* Header */}
       <div style={p.header}>
         <div style={p.avatar}>
           {profile.name?.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
@@ -145,8 +171,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
             </div>
           </div>
         )}
-        {/* NEU – Konto bearbeiten Button */}
-        <button style={p.editBtn} onClick={() => { setShowEdit(true); setEditMsg(""); }}>
+        <button style={p.editBtn} onClick={() => { setShowEdit(true); setEditMsg(""); setLoeschenSchritt(0); }}>
           ✏️ Konto bearbeiten
         </button>
       </div>
@@ -157,7 +182,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
         </div>
       )}
 
-      {/* ── Gutscheine ── */}
+      {/* Gutscheine */}
       <div style={p.sectionTitle}>Punkte einlösen</div>
       {VOUCHERS.map((v) => {
         const req = settings[v.ptsKey] as number;
@@ -175,7 +200,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
         );
       })}
 
-      {/* ── Badges ── */}
+      {/* Badges */}
       <div style={p.sectionTitle}>Meine Abzeichen</div>
       <div style={p.badgeGrid}>
         {BADGES.map((b) => (
@@ -187,7 +212,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
         ))}
       </div>
 
-      {/* ── Schichten ── */}
+      {/* Schichten */}
       <div style={p.sectionTitle}>Meine Schichten</div>
       {bookings.map((b) => (
         <div key={b.id} style={p.shiftItem}>
@@ -208,7 +233,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
         Abmelden
       </button>
 
-      {/* ── Modal: Gutschein einlösen ── */}
+      {/* Modal: Gutschein einlösen */}
       {redeemType && (
         <div style={p.overlay} onClick={() => setRedeemType(null)}>
           <div style={p.modal} onClick={(e) => e.stopPropagation()}>
@@ -231,7 +256,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
         </div>
       )}
 
-      {/* ── NEU: Modal: Konto bearbeiten ── */}
+      {/* Modal: Konto bearbeiten */}
       {showEdit && (
         <div style={p.overlay} onClick={() => setShowEdit(false)}>
           <div style={p.modal} onClick={(e) => e.stopPropagation()}>
@@ -240,17 +265,12 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
 
             {/* Anzeigename */}
             <label style={p.fieldLabel}>Anzeigename</label>
-            <input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              style={p.input}
-              placeholder="Dein Name"
-            />
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={p.input} placeholder="Dein Name" />
             <button style={{ ...p.btnPrimary, marginBottom: 20 }} onClick={saveDisplayName} disabled={editLoading}>
               Name speichern
             </button>
 
-            {/* E-Mail (nur lesen) */}
+            {/* E-Mail */}
             <label style={p.fieldLabel}>E-Mail</label>
             <input value={profile.email} disabled style={{ ...p.input, background: "#f0f0f0", color: "#999" }} />
             <p style={{ fontSize: 11, color: "#aaa", marginTop: -8, marginBottom: 20 }}>
@@ -259,30 +279,74 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
 
             {/* Passwort */}
             <label style={p.fieldLabel}>Neues Passwort</label>
-            <input
-              type="password"
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              style={{ ...p.input, marginBottom: 8 }}
-              placeholder="Mindestens 8 Zeichen"
-            />
-            <input
-              type="password"
-              value={confirmPw}
-              onChange={(e) => setConfirmPw(e.target.value)}
-              style={p.input}
-              placeholder="Passwort bestätigen"
-            />
-            <button style={p.btnPrimary} onClick={changePassword} disabled={editLoading}>
+            <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} style={{ ...p.input, marginBottom: 8 }} placeholder="Mindestens 8 Zeichen" />
+            <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} style={p.input} placeholder="Passwort bestätigen" />
+            <button style={{ ...p.btnPrimary, marginBottom: 24 }} onClick={changePassword} disabled={editLoading}>
               Passwort ändern
             </button>
 
             {/* Statusmeldung */}
             {editMsg && (
-              <p style={{ marginTop: 12, fontSize: 13, color: editMsg.startsWith("✅") ? "#1a7a4a" : "#c0392b", textAlign: "center" }}>
+              <p style={{ marginTop: -16, marginBottom: 16, fontSize: 13, color: editMsg.startsWith("✅") ? "#1a7a4a" : "#c0392b", textAlign: "center" }}>
                 {editMsg}
               </p>
             )}
+
+            {/* Account löschen */}
+            <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 20, marginTop: 4 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
+                Account löschen
+              </p>
+              <p style={{ fontSize: 12, color: "#aaa", marginBottom: 14, lineHeight: 1.5 }}>
+                Alle deine Punkte, Schichthistorie und Belegungen werden unwiderruflich gelöscht.
+              </p>
+
+              {loeschenSchritt === 0 && (
+                <button
+                  onClick={() => setLoeschenSchritt(1)}
+                  style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid #e74c3c", color: "#e74c3c", background: "none", fontSize: 13, cursor: "pointer" }}>
+                  Account löschen
+                </button>
+              )}
+
+              {loeschenSchritt === 1 && (
+                <div style={{ background: "#fff5f5", border: "1px solid #fcc", borderRadius: 10, padding: 14 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#c0392b", marginBottom: 8 }}>Bist du sicher?</p>
+                  <p style={{ fontSize: 12, color: "#555", marginBottom: 14, lineHeight: 1.5 }}>
+                    Deine <strong>Punkte</strong>, <strong>Schichthistorie</strong> und alle <strong>Anmeldungen</strong> werden dauerhaft gelöscht.
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setLoeschenSchritt(2)}
+                      style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", background: "#e74c3c", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      Ja, weiter
+                    </button>
+                    <button onClick={() => setLoeschenSchritt(0)}
+                      style={{ flex: 1, padding: "9px", borderRadius: 8, border: "1px solid #ccc", background: "none", color: "#555", fontSize: 12, cursor: "pointer" }}>
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {loeschenSchritt === 2 && (
+                <div style={{ background: "#fff5f5", border: "2px solid #e74c3c", borderRadius: 10, padding: 14 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#c0392b", marginBottom: 8 }}>Letzte Bestätigung</p>
+                  <p style={{ fontSize: 12, color: "#555", marginBottom: 14, lineHeight: 1.5 }}>
+                    Nach dem Klick wird dein Account <strong>sofort und unwiderruflich</strong> gelöscht.
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={handleAccountLoeschen} disabled={loeschenLaed}
+                      style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", background: "#c0392b", color: "#fff", fontSize: 12, fontWeight: 700, cursor: loeschenLaed ? "not-allowed" : "pointer", opacity: loeschenLaed ? 0.7 : 1 }}>
+                      {loeschenLaed ? "Wird gelöscht…" : "Endgültig löschen"}
+                    </button>
+                    <button onClick={() => setLoeschenSchritt(0)} disabled={loeschenLaed}
+                      style={{ flex: 1, padding: "9px", borderRadius: 8, border: "1px solid #ccc", background: "none", color: "#555", fontSize: 12, cursor: "pointer" }}>
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -306,11 +370,9 @@ const p: Record<string, React.CSSProperties> = {
   ptsSub:      { fontSize: 14, opacity: 0.85, marginTop: 2 },
   progWrap:    { background: "rgba(255,255,255,.3)", borderRadius: 99, height: 7, overflow: "hidden" },
   prog:        { background: "#fff", height: "100%", borderRadius: 99, transition: "width .3s" },
-  // NEU
   editBtn:     { marginTop: 14, background: "rgba(255,255,255,.2)", color: "#fff", border: "1px solid rgba(255,255,255,.4)", padding: "6px 16px", borderRadius: 8, fontSize: 12, cursor: "pointer" },
   fieldLabel:  { fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase" as const, letterSpacing: ".04em", display: "block", marginBottom: 6 },
   input:       { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: 14, marginBottom: 12, boxSizing: "border-box" as const },
-  // Bestehend
   sectionTitle: { fontSize: 13, fontWeight: 600, color: "#888", textTransform: "uppercase" as const, letterSpacing: ".04em", margin: "16px 0 8px" },
   voucherCard:  { borderRadius: 12, padding: 16, marginBottom: 10, color: "#fff" },
   voucherTitle: { fontSize: 16, fontWeight: 700 },
