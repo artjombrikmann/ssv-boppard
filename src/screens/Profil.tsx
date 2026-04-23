@@ -59,7 +59,6 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
   const [editMsg, setEditMsg]         = useState("");
   const [editLoading, setEditLoading] = useState(false);
 
-  // Account löschen
   const [loeschenSchritt, setLoeschenSchritt] = useState<0 | 1 | 2>(0);
   const [loeschenLaed, setLoeschenLaed]       = useState(false);
 
@@ -76,60 +75,36 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
       .then(({ data }) => { if (data) setSettings(data); });
   }, []);
 
-async function handleRedeem(v: (typeof VOUCHERS)[0]) {
-  const req = settings[v.ptsKey] as number;
-  if ((profile.punkte ?? 0) < req) return;
+  async function handleRedeem(v: (typeof VOUCHERS)[0]) {
+    const req = settings[v.ptsKey] as number;
+    if ((profile.punkte ?? 0) < req) return;
 
-  await supabase.from("gutschein_anfragen").insert({
-    mitglied_id: profile.id,
-    typ: v.id,
-    punkte: req,
-    status: "offen",
-  });
+    await supabase.from("gutschein_anfragen").insert({
+      mitglied_id: profile.id,
+      typ: v.id,
+      punkte: req,
+      status: "offen",
+    });
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-    console.log("Supabase URL:", supabaseUrl);
-    try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/gutschein-anfrage`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          mitglied_id: profile.id,
-          typ: v.id,
-          punkte: req,
-        }),
-      });
-      console.log("Response Status:", res.status);
-    } catch (err) {
-      console.error("Fehler:", err);
-    }
-  }
-
-  setRedeemType(null);
-  setDone(true);
-}
-
-    // Mail an Admin schicken
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      await fetch(`${supabaseUrl}/functions/v1/gutschein-anfrage`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          mitglied_id: profile.id,
-          typ: v.id,
-          punkte: req,
-        }),
-      });
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/gutschein-anfrage`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mitglied_id: profile.id,
+            typ: v.id,
+            punkte: req,
+          }),
+        });
+      } catch (err) {
+        console.error("Gutschein-Mail Fehler:", err);
+      }
     }
 
     setRedeemType(null);
@@ -200,7 +175,6 @@ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
 
   return (
     <div>
-      {/* Header */}
       <div style={p.header}>
         <div style={p.avatar}>
           {profile.name?.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
@@ -229,7 +203,6 @@ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
         </div>
       )}
 
-      {/* Gutscheine */}
       <div style={p.sectionTitle}>Punkte einlösen</div>
       {VOUCHERS.map((v) => {
         const req = settings[v.ptsKey] as number;
@@ -247,7 +220,6 @@ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
         );
       })}
 
-      {/* Badges */}
       <div style={p.sectionTitle}>Meine Abzeichen</div>
       <div style={p.badgeGrid}>
         {BADGES.map((b) => (
@@ -259,7 +231,6 @@ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
         ))}
       </div>
 
-      {/* Schichten */}
       <div style={p.sectionTitle}>Meine Schichten</div>
       {bookings.map((b) => (
         <div key={b.id} style={p.shiftItem}>
@@ -280,7 +251,6 @@ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
         Abmelden
       </button>
 
-      {/* Modal: Gutschein einlösen */}
       {redeemType && (
         <div style={p.overlay} onClick={() => setRedeemType(null)}>
           <div style={p.modal} onClick={(e) => e.stopPropagation()}>
@@ -303,28 +273,24 @@ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
         </div>
       )}
 
-      {/* Modal: Konto bearbeiten */}
       {showEdit && (
         <div style={p.overlay} onClick={() => setShowEdit(false)}>
           <div style={p.modal} onClick={(e) => e.stopPropagation()}>
             <div style={p.handle} />
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 16 }}>✏️ Konto bearbeiten</div>
 
-            {/* Anzeigename */}
             <label style={p.fieldLabel}>Anzeigename</label>
             <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={p.input} placeholder="Dein Name" />
             <button style={{ ...p.btnPrimary, marginBottom: 20 }} onClick={saveDisplayName} disabled={editLoading}>
               Name speichern
             </button>
 
-            {/* E-Mail */}
             <label style={p.fieldLabel}>E-Mail</label>
             <input value={profile.email} disabled style={{ ...p.input, background: "#f0f0f0", color: "#999" }} />
             <p style={{ fontSize: 11, color: "#aaa", marginTop: -8, marginBottom: 20 }}>
               Nur der Admin kann die E-Mail ändern.
             </p>
 
-            {/* Passwort */}
             <label style={p.fieldLabel}>Neues Passwort</label>
             <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} style={{ ...p.input, marginBottom: 8 }} placeholder="Mindestens 8 Zeichen" />
             <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} style={p.input} placeholder="Passwort bestätigen" />
@@ -332,14 +298,12 @@ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
               Passwort ändern
             </button>
 
-            {/* Statusmeldung */}
             {editMsg && (
               <p style={{ marginTop: -16, marginBottom: 16, fontSize: 13, color: editMsg.startsWith("✅") ? "#1a7a4a" : "#c0392b", textAlign: "center" }}>
                 {editMsg}
               </p>
             )}
 
-            {/* Account löschen */}
             <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 20, marginTop: 4 }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
                 Account löschen
@@ -349,8 +313,7 @@ async function handleRedeem(v: (typeof VOUCHERS)[0]) {
               </p>
 
               {loeschenSchritt === 0 && (
-                <button
-                  onClick={() => setLoeschenSchritt(1)}
+                <button onClick={() => setLoeschenSchritt(1)}
                   style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid #e74c3c", color: "#e74c3c", background: "none", fontSize: 13, cursor: "pointer" }}>
                   Account löschen
                 </button>
