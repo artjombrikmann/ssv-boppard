@@ -57,8 +57,6 @@ export default function App() {
   async function loadProfile(userId: string) {
     try {
       const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
-      console.log('PROFIL DATA:', data)
-      console.log('PROFIL ERROR:', null)
       setProfile(data ?? null)
       if (data) loadBenachrichtigungen()
     } finally {
@@ -88,6 +86,12 @@ export default function App() {
     setShowOverlay(false)
   }
 
+  // FIX: Tab-Wechsel lädt Benachrichtigungen neu → Glocke immer aktuell
+  function handleTabChange(tab: TabId) {
+    setActiveTab(tab)
+    if (session) loadBenachrichtigungen()
+  }
+
   const ungelesen = benachrichtigungen.filter(b => !b.gelesen).length
 
   function zeitFormatieren(iso: string) {
@@ -115,7 +119,8 @@ export default function App() {
     ? [...NAV_TABS, { id: 'verwaltung' as TabId, icon: 'shield', label: 'Admin' }]
     : NAV_TABS
 
-  const screenProps = { profile, onTabChange: (tab: string) => setActiveTab(tab as TabId) }
+  // FIX: onTabChange nutzt jetzt handleTabChange
+  const screenProps = { profile, onTabChange: (tab: string) => handleTabChange(tab as TabId) }
 
   return (
     <div style={{ maxWidth:420, margin:'0 auto', minHeight:'100vh', background:'#f8faf8', position:'relative' }}>
@@ -285,7 +290,7 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={() => { setActiveTab('profil'); setShowOverlay(false) }}
+                    onClick={() => { handleTabChange('profil'); setShowOverlay(false) }}
                     style={{
                       width:'100%', padding:'14px 16px',
                       border:'none', borderBottom:'1px solid #f3f4f6', background:'none', cursor:'pointer',
@@ -347,7 +352,7 @@ export default function App() {
           <button
             key={t.id}
             className={`nav-btn${activeTab === t.id ? ' active' : ''}`}
-            onClick={() => setActiveTab(t.id)}
+            onClick={() => handleTabChange(t.id)}
             style={{ flex:1, padding:'10px 4px 8px', border:'none', background:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:3, fontSize:9, fontFamily:'Lexend,sans-serif', fontWeight:800, textTransform:'uppercase', letterSpacing:'.04em' }}
           >
             <span className={`material-symbols-outlined${activeTab === t.id ? ' icon-fill' : ''}`} style={{ fontSize:20 }}>{t.icon}</span>
