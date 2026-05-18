@@ -1,4 +1,4 @@
-mport { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Profile, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
 
