@@ -26,7 +26,8 @@ export default function Marktplatz({ profile }: Props) {
   async function loadData() {
     const [{ data: sh }, { data: bk }, { data: kat }, { data: ev }] = await Promise.all([
       supabase.from('schichten').select('*, veranstaltungen(name), kategorien(name)').order('startzeit'),
-      supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', profile.id),
+      // FIX: Nur aktive Belegungen (nicht abgesagte) als "meine Schichten" zählen
+      supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', profile.id).neq('status', 'abgesagt'),
       supabase.from('kategorien').select('*').order('name'),
       supabase.from('veranstaltungen').select('id, name, datum, datum_ende, ort, status, kategorie'),
     ])
@@ -44,6 +45,8 @@ export default function Marktplatz({ profile }: Props) {
       .from('schichtbelegungen')
       .select('profiles(name, display_name)')
       .eq('schicht_id', s.id)
+      // FIX: Nur aktive Teilnehmer anzeigen, keine abgesagten
+      .neq('status', 'abgesagt')
     setTeilnehmer((data ?? []).map((b: any) => ({
       name: b.profiles?.display_name || b.profiles?.name || 'Unbekannt'
     })))
@@ -52,7 +55,29 @@ export default function Marktplatz({ profile }: Props) {
 
   async function joinShift(s: Schicht) {
     setSaving(true)
-    await supabase.from('schichtbelegungen').insert({ schicht_id: s.id, mitglied_id: profile.id, status: 'Angemeldet' })
+
+    // FIX: Prüfen ob eine alte (abgesagte) Belegung existiert → reaktivieren statt neu anlegen
+    // Verhindert doppelte Punktevergabe da punkte_vergeben erhalten bleibt
+    const { data: existing } = await supabase
+      .from('schichtbelegungen')
+      .select('id, punkte_vergeben')
+      .eq('schicht_id', s.id)
+      .eq('mitglied_id', profile.id)
+      .single()
+
+    if (existing) {
+      // Alte Belegung reaktivieren
+      await supabase
+        .from('schichtbelegungen')
+        .update({ status: 'Angemeldet' })
+        .eq('id', existing.id)
+    } else {
+      // Neue Belegung anlegen
+      await supabase
+        .from('schichtbelegungen')
+        .insert({ schicht_id: s.id, mitglied_id: profile.id, status: 'Angemeldet' })
+    }
+
     await supabase.from('schichten').update({ belegt: s.belegt + 1 }).eq('id', s.id)
     await loadData()
     setSaving(false)
@@ -64,7 +89,15 @@ export default function Marktplatz({ profile }: Props) {
 
   async function leaveShift(s: Schicht) {
     setSaving(true)
-    await supabase.from('schichtbelegungen').delete().eq('schicht_id', s.id).eq('mitglied_id', profile.id)
+
+    // FIX: Status auf 'abgesagt' setzen statt löschen
+    // So bleibt punkte_vergeben erhalten → kein Doppelvergabe möglich
+    await supabase
+      .from('schichtbelegungen')
+      .update({ status: 'abgesagt' })
+      .eq('schicht_id', s.id)
+      .eq('mitglied_id', profile.id)
+
     await supabase.from('schichten').update({ belegt: Math.max(0, s.belegt - 1) }).eq('id', s.id)
     await loadData()
     setSaving(false)
@@ -119,14 +152,14 @@ export default function Marktplatz({ profile }: Props) {
   const isMine = (s: Schicht) => myBookings.includes(s.id)
   const isFull = (s: Schicht) => s.belegt >= s.plaetze
 
- const aktiveEventIds = veranstaltungen
-  .filter(v => v.status !== 'Abgeschlossen')
-  .map(v => v.id)
+  const aktiveEventIds = veranstaltungen
+    .filter(v => v.status !== 'Abgeschlossen')
+    .map(v => v.id)
 
-const filtered = schichten
-  .filter(s => aktiveEventIds.includes(s.veranstaltung_id))
-  .filter(s => filter === null || s.kategorie_id === filter)
-  .filter(s => !search || s.bezeichnung.toLowerCase().includes(search.toLowerCase()))
+  const filtered = schichten
+    .filter(s => aktiveEventIds.includes(s.veranstaltung_id))
+    .filter(s => filter === null || s.kategorie_id === filter)
+    .filter(s => !search || s.bezeichnung.toLowerCase().includes(search.toLowerCase()))
 
   const grouped = filtered.reduce((acc, s) => {
     const key = s.veranstaltung_id

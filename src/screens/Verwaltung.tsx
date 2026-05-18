@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile, Schichtbelegung, Veranstaltung, Einstellungen, GutscheinAnfrage, Kategorie, Schicht } from '../types'
+import { Profile, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
 
 interface Props { profile: Profile; onTabChange: (tab: string) => void }
-type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'einloesungen' | 'mitglieder' | 'archiv'
+type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv'
 
 interface VeranstaltungMitAuslastung extends Veranstaltung {
   schichten: Schicht[]
@@ -18,7 +18,6 @@ export default function Verwaltung(_: Props) {
   const [members,    setMembers]    = useState<Profile[]>([])
   const [events,     setEvents]     = useState<VeranstaltungMitAuslastung[]>([])
   const [archiv,     setArchiv]     = useState<VeranstaltungMitAuslastung[]>([])
-  const [reqs,       setReqs]       = useState<GutscheinAnfrage[]>([])
   const [kategorien, setKategorien] = useState<Kategorie[]>([])
   const [settings,   setSettings]   = useState<Einstellungen>({ id:1, punkte_kurz:5, punkte_normal:10, punkte_lang:15, punkte_sonder:20, bonus_turnier:3, bonus_fest:2, admin_email:'geschaeftsfuehrung@ssv-boppard.de' })
   const [newEv,      setNewEv]      = useState({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
@@ -43,12 +42,11 @@ export default function Verwaltung(_: Props) {
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   async function loadAll() {
-    const [b, m, e, s_data, r, s, k] = await Promise.all([
+    const [b, m, e, s_data, s, k] = await Promise.all([
       supabase.from('schichtbelegungen').select('*, profiles(name), schichten(bezeichnung,punkte)'),
       supabase.from('profiles').select('*').order('punkte', { ascending: false }),
       supabase.from('veranstaltungen').select('*').order('datum'),
       supabase.from('schichten').select('*'),
-      supabase.from('gutschein_anfragen').select('*, profiles(name)').order('created_at', { ascending: false }),
       supabase.from('einstellungen').select('*').single(),
       supabase.from('kategorien').select('*').order('name'),
     ])
@@ -67,7 +65,6 @@ export default function Verwaltung(_: Props) {
     setMembers(m.data ?? [])
     setEvents(mitAuslastung(alleEvents.filter(ev => ev.status !== 'Abgeschlossen')))
     setArchiv(mitAuslastung(alleEvents.filter(ev => ev.status === 'Abgeschlossen')))
-    setReqs(r.data ?? [])
     if (s.data) setSettings(s.data)
     setKategorien(k.data ?? [])
   }
@@ -134,11 +131,6 @@ export default function Verwaltung(_: Props) {
     setSaved(true); setTimeout(() => setSaved(false), 2000); showToast('✅ Einstellungen gespeichert!')
   }
 
-  async function handleReq(id: number, status: string) {
-    await supabase.from('gutschein_anfragen').update({ status }).eq('id', id)
-    showToast(status === 'genehmigt' ? '✅ Genehmigt!' : '❌ Abgelehnt'); loadAll()
-  }
-
   function auslastungFarbe(pct: number) {
     if (pct >= 80) return '#0d631b'
     if (pct >= 50) return '#f59e0b'
@@ -157,7 +149,13 @@ export default function Verwaltung(_: Props) {
   async function addTempUser() {
     if (!newTemp.vorname.trim() || !newTemp.nachname.trim()) { showToast('❌ Vor- und Nachname pflicht'); return }
     setTempLoading(true)
+    if (newTemp.email) {
+      const { data: existingEmail } = await supabase.from('profiles').select('id').eq('email', newTemp.email).limit(1)
+      if (existingEmail && existingEmail.length > 0) { showToast('❌ Diese E-Mail ist bereits vergeben'); setTempLoading(false); return }
+    }
     const name = `${newTemp.vorname.trim()} ${newTemp.nachname.trim()}`
+    const { data: existingName } = await supabase.from('profiles').select('id').ilike('name', name).limit(1)
+    if (existingName && existingName.length > 0) { showToast('❌ Ein Mitglied mit diesem Namen existiert bereits'); setTempLoading(false); return }
     const { error } = await supabase.from('profiles').insert({
       id: crypto.randomUUID(), name, display_name: newTemp.vorname.trim(),
       email: newTemp.email || `temp_${Date.now()}@ssv-boppard.intern`,
@@ -181,14 +179,11 @@ export default function Verwaltung(_: Props) {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
-    const res = await fetch(
-      `${supabaseUrl}/functions/v1/account-loeschen`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
-      }
-    )
+    const res = await fetch(`${supabaseUrl}/functions/v1/account-loeschen`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    })
     const data = await res.json()
     if (data.erfolg) { showToast('🗑️ Account gelöscht'); loadAll() }
     else showToast('❌ Fehler: ' + data.fehler)
@@ -202,14 +197,19 @@ export default function Verwaltung(_: Props) {
     showToast('🗑️ Zuweisung entfernt'); loadAll(); loadAllSchichten()
   }
 
+  // FIX: Einlösungen-Tab entfernt
   const TABS: { id: AdminTab; label: string }[] = [
-    { id:'uebersicht', label:'Übersicht' }, { id:'veranstaltungen', label:'Events' },
-    { id:'kategorien', label:'Kategorien' }, { id:'punkte', label:'Punkte' },
-    { id:'einloesungen', label:'Einlösungen' }, { id:'mitglieder', label:'User' },
+    { id:'uebersicht', label:'Übersicht' },
+    { id:'veranstaltungen', label:'Events' },
+    { id:'kategorien', label:'Kategorien' },
+    { id:'punkte', label:'Punkte' },
+    { id:'mitglieder', label:'User' },
     { id:'archiv', label:'Archiv' },
   ]
 
   const activeEv = events.find(e => e.id === activeEvId)
+  const gesamtSchichten = events.reduce((sum, ev) => sum + ev.schichten.length, 0)
+  const ausstehendePunkte = bookings.filter(b => !b.punkte_vergeben).length
 
   return (
     <div style={{ padding:'20px 16px', display:'flex', flexDirection:'column', gap:16 }}>
@@ -228,89 +228,61 @@ export default function Verwaltung(_: Props) {
 
       {tab === 'uebersicht' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+
+          {/* Hero Kennzahlen */}
           <div style={{ background:'#0d631b', borderRadius:20, padding:20, color:'#fff' }}>
             <p style={{ fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'.08em', opacity:.7, marginBottom:12 }}>Vereins-Übersicht</p>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-              {[{ val: bookings.filter(b => !b.punkte_vergeben).length, label:'Ausstehend' }, { val: members.length, label:'Mitglieder' }, { val: events.length, label:'Events' }].map(s => (
-                <div key={s.label}><p style={{ fontFamily:'Lexend,sans-serif', fontSize:24, fontWeight:900 }}>{s.val}</p><p style={{ fontSize:9, fontWeight:800, opacity:.7, textTransform:'uppercase', letterSpacing:'.06em' }}>{s.label}</p></div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              {[
+                { val: members.length, label:'Mitglieder' },
+                { val: events.length, label:'Aktive Events' },
+                { val: gesamtSchichten, label:'Schichten' },
+                { val: ausstehendePunkte, label:'Punkte ausstehend' },
+              ].map(s => (
+                <div key={s.label}>
+                  <p style={{ fontFamily:'Lexend,sans-serif', fontSize:26, fontWeight:900, lineHeight:1 }}>{s.val}</p>
+                  <p style={{ fontSize:9, fontWeight:800, opacity:.7, textTransform:'uppercase', letterSpacing:'.06em', marginTop:3 }}>{s.label}</p>
+                </div>
               ))}
             </div>
           </div>
 
-          <Section title={`Veranstaltungen & Auslastung (${events.length})`}>
-            {events.length === 0 ? <Empty text="Keine aktiven Veranstaltungen." /> : events.map(ev => (
-              <div key={ev.id} style={{ borderBottom:'1px solid #f9fafb' }}>
-                <div style={{ padding:'12px 0' }}>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                    <div style={{ cursor:'pointer', flex:1 }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
-                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{ev.name}</p>
-                      <p style={{ fontSize:11, color:'#9ca3af' }}>{new Date(ev.datum).toLocaleDateString('de-DE')} · {ev.ort}</p>
-                    </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <div style={{ textAlign:'right', cursor:'pointer' }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
-                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:18, color: auslastungFarbe(ev.auslastung) }}>{ev.auslastung}%</p>
-                        <p style={{ fontSize:10, color:'#9ca3af' }}>{ev.belegtePlaetze}/{ev.gesamtPlaetze} Plätze</p>
-                      </div>
-                      <button onClick={() => deleteVeranstaltung(ev)} style={{ width:32, height:32, borderRadius:8, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
-                      </button>
-                    </div>
+          {/* Schnellzugriff */}
+          <div>
+            <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>Schnellzugriff</p>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {[
+                { label:'Events', sub:`${events.length} aktiv`, icon:'event_available', target:'veranstaltungen' },
+                { label:'User', sub:`${members.length} Mitglieder`, icon:'group', target:'mitglieder' },
+                { label:'Punkte', sub:'Regeln & E-Mail', icon:'star', target:'punkte' },
+                { label:'Kategorien', sub:`${kategorien.length} angelegt`, icon:'label', target:'kategorien' },
+              ].map(item => (
+                <button key={item.target} onClick={() => setTab(item.target as AdminTab)}
+                  style={{ background:'#fff', border:'1px solid #f3f4f6', borderRadius:14, padding:'12px 14px', display:'flex', alignItems:'center', gap:10, cursor:'pointer', textAlign:'left' }}>
+                  <div style={{ width:36, height:36, borderRadius:10, background:'#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize:18, color:'#0d631b' }}>{item.icon}</span>
                   </div>
-                  <div style={{ height:6, background:'#f3f4f6', borderRadius:99, overflow:'hidden' }}>
-                    <div style={{ height:'100%', width:`${ev.auslastung}%`, background: auslastungFarbe(ev.auslastung), borderRadius:99, transition:'width .4s ease' }} />
+                  <div>
+                    <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13, color:'#111827' }}>{item.label}</p>
+                    <p style={{ fontSize:11, color:'#9ca3af', marginTop:1 }}>{item.sub}</p>
                   </div>
-                  <div style={{ marginTop:6, display:'flex', gap:6, alignItems:'center', cursor:'pointer' }} onClick={() => setExpandedEv(expandedEv === ev.id ? null : ev.id)}>
-                    <span style={{ fontSize:10, color:'#9ca3af' }}>{ev.schichten.length} Schichten</span>
-                    <span className="material-symbols-outlined" style={{ fontSize:14, color:'#9ca3af' }}>{expandedEv === ev.id ? 'expand_less' : 'expand_more'}</span>
-                  </div>
-                </div>
-                {expandedEv === ev.id && ev.schichten.map(s => {
-                  const pct = s.plaetze > 0 ? Math.round((s.belegt / s.plaetze) * 100) : 0
-                  return (
-                    <div key={s.id} style={{ background:'#f8faf8', borderRadius:10, padding:'10px 12px', marginBottom:6 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:600, fontSize:12 }}>{s.bezeichnung}</p>
-                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                          <span style={{ fontSize:11, fontWeight:700, color: auslastungFarbe(pct) }}>{s.belegt}/{s.plaetze}</span>
-                          <button onClick={() => deleteSchicht(s)} style={{ width:24, height:24, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize:13, color:'#ef4444' }}>delete</span>
-                          </button>
-                        </div>
-                      </div>
-                      <div style={{ height:4, background:'#e5e7eb', borderRadius:99, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${pct}%`, background: auslastungFarbe(pct), borderRadius:99 }} />
-                      </div>
-                      <p style={{ fontSize:10, color:'#9ca3af', marginTop:4 }}>{s.startzeit} – {s.endzeit} · {s.punkte} Pkt</p>
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
-          </Section>
+                </button>
+              ))}
+            </div>
+          </div>
 
+          {/* Ausstehende Punkte */}
           <Section title="Ausstehende Punkte vergeben">
-            {bookings.filter(b => !b.punkte_vergeben).length === 0 ? <Empty text="Alle Punkte vergeben ✅" />
+            {bookings.filter(b => !b.punkte_vergeben).length === 0
+              ? <Empty text="Alle Punkte vergeben ✅" />
               : bookings.filter(b => !b.punkte_vergeben).map(b => (
                 <Row key={b.id} title={(b.profiles as any)?.name ?? '–'} sub={b.schichten?.bezeichnung ?? '–'}
-                  right={<button onClick={() => givePoints(b)} style={btnSm}>✓ {b.schichten?.punkte} Pkt</button>} />
+                  right={
+                    b.punkte_vergeben
+                      ? <span style={{ fontSize:11, fontWeight:900, color:'#9ca3af', padding:'6px 12px', background:'#f3f4f6', borderRadius:8 }}>✓ Vergeben</span>
+                      : <button onClick={() => givePoints(b)} style={btnSm}>✓ {b.schichten?.punkte} Pkt</button>
+                  } />
               ))}
-          </Section>
-
-          <Section title={`Mitglieder (${members.length})`}>
-            {members.map((m, i) => (
-              <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                <div style={{ width:28, height:28, borderRadius:'50%', background: i < 3 ? '#e8f5ee' : '#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: i < 3 ? '#0d631b' : '#9ca3af' }}>
-                    {(m.display_name || m.name)?.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
-                  </span>
-                </div>
-                <div style={{ flex:1 }}>
-                  <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{m.display_name || m.name}</p>
-                  <p style={{ fontSize:10, color:'#9ca3af' }}>{m.schichten_count ?? 0} Schichten · {m.email}</p>
-                </div>
-                <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:14, color:'#0d631b' }}>{m.punkte} P</span>
-              </div>
-            ))}
           </Section>
         </div>
       )}
@@ -491,7 +463,12 @@ export default function Verwaltung(_: Props) {
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <InfoBox text="Diese Werte werden beim Anlegen neuer Schichten als Standard verwendet." />
           <Section title="Punkte nach Schichtdauer">
-            {[{ label:'Kurze Schicht', sub:'bis 3 Stunden', key:'punkte_kurz' as keyof Einstellungen }, { label:'Normale Schicht', sub:'3 – 6 Stunden', key:'punkte_normal' as keyof Einstellungen }, { label:'Lange Schicht', sub:'mehr als 6 Stunden', key:'punkte_lang' as keyof Einstellungen }, { label:'Sondereinsatz', sub:'auf Admin-Anfrage', key:'punkte_sonder' as keyof Einstellungen }].map(r => (
+            {[
+              { label:'Kurze Schicht', sub:'bis 3 Stunden', key:'punkte_kurz' as keyof Einstellungen },
+              { label:'Normale Schicht', sub:'3 – 6 Stunden', key:'punkte_normal' as keyof Einstellungen },
+              { label:'Lange Schicht', sub:'mehr als 6 Stunden', key:'punkte_lang' as keyof Einstellungen },
+              { label:'Sondereinsatz', sub:'auf Admin-Anfrage', key:'punkte_sonder' as keyof Einstellungen },
+            ].map(r => (
               <div key={r.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
                 <div><p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{r.label}</p><p style={{ fontSize:11, color:'#9ca3af' }}>{r.sub}</p></div>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
@@ -526,6 +503,8 @@ export default function Verwaltung(_: Props) {
             <input style={{ ...inp, marginBottom:10 }} placeholder="User suchen..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
             {members.filter(m => (m.display_name || m.name || '').toLowerCase().includes(userSearch.toLowerCase())).map(m => {
               const bestaetigt = (m as any).email_bestaetigt ?? true
+              const nameCount = members.filter(x => (x.display_name || x.name) === (m.display_name || m.name)).length
+              const isDuplikat = nameCount > 1
               return (
                 <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb', opacity: bestaetigt ? 1 : 0.5 }}>
                   <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -536,6 +515,7 @@ export default function Verwaltung(_: Props) {
                       {m.display_name || m.name}
                       {(m as any).is_temp && <span style={{ marginLeft:6, fontSize:9, background:'#e8f0fe', color:'#1a3a7a', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>{(m as any).temp_typ ?? 'TEMP'}</span>}
                       {!bestaetigt && <span style={{ marginLeft:6, fontSize:9, background:'#fef2f2', color:'#ef4444', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>Unbestätigt</span>}
+                      {isDuplikat && <span style={{ marginLeft:6, fontSize:9, background:'#fff7ed', color:'#f59e0b', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>⚠️ Duplikat</span>}
                     </p>
                     <p style={{ fontSize:10, color:'#9ca3af' }}>{(m as any).is_temp ? 'Kein Login · keine Punkte' : `${m.punkte} Pkt · ${m.email}`}</p>
                   </div>
@@ -573,39 +553,14 @@ export default function Verwaltung(_: Props) {
         </div>
       )}
 
-      {tab === 'einloesungen' && (
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <InfoBox text="Bei jeder Einlösung wird eine E-Mail gesendet. Die Punkte werden sofort abgezogen." />
-          <Section title="Einlösungs-Anfragen">
-            {reqs.length === 0 ? <Empty text="Noch keine Anfragen" /> : reqs.map(r => (
-              <div key={r.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                <div><p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{(r.profiles as any)?.name}</p><p style={{ fontSize:11, color:'#9ca3af' }}>{r.typ} · {r.punkte} Pkt</p></div>
-                <div style={{ display:'flex', gap:6 }}>
-                  {r.status === 'offen' ? (<><button onClick={() => handleReq(r.id,'genehmigt')} style={{ ...btnSm, background:'#e8f5ee', color:'#0d631b' }}>✓</button><button onClick={() => handleReq(r.id,'abgelehnt')} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444' }}>✕</button></>) : (
-                    <span style={{ fontSize:10, fontWeight:900, padding:'3px 10px', borderRadius:99, background: r.status==='genehmigt'?'#e8f5ee':'#fef2f2', color: r.status==='genehmigt'?'#0d631b':'#ef4444', fontFamily:'Lexend,sans-serif' }}>{r.status}</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </Section>
-        </div>
-      )}
       {loeschenUserId && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
           <div style={{ background:'#fff', borderRadius:16, padding:28, maxWidth:320, width:'90%' }}>
             <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:16, marginBottom:8, color:'#1a1a1a' }}>Account löschen?</p>
-            <p style={{ fontSize:13, color:'#555', marginBottom:20, lineHeight:1.6 }}>
-              Dieser unbestätigte Account wird unwiderruflich gelöscht.
-            </p>
+            <p style={{ fontSize:13, color:'#555', marginBottom:20, lineHeight:1.6 }}>Dieser unbestätigte Account wird unwiderruflich gelöscht.</p>
             <div style={{ display:'flex', gap:10 }}>
-              <button onClick={() => setLoeschenUserId(null)}
-                style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #e5e7eb', background:'none', fontSize:13, cursor:'pointer', color:'#555' }}>
-                Abbrechen
-              </button>
-              <button onClick={() => userLoeschen(loeschenUserId)}
-                style={{ flex:1, padding:'10px', borderRadius:10, border:'none', background:'#ef4444', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>
-                Löschen
-              </button>
+              <button onClick={() => setLoeschenUserId(null)} style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #e5e7eb', background:'none', fontSize:13, cursor:'pointer', color:'#555' }}>Abbrechen</button>
+              <button onClick={() => userLoeschen(loeschenUserId)} style={{ flex:1, padding:'10px', borderRadius:10, border:'none', background:'#ef4444', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>Löschen</button>
             </div>
           </div>
         </div>

@@ -79,13 +79,21 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
     const req = settings[v.ptsKey] as number;
     if ((profile.punkte ?? 0) < req) return;
 
+    // FIX Option B: Status direkt auf 'genehmigt' setzen → kein Admin-Schritt nötig
     await supabase.from("gutschein_anfragen").insert({
       mitglied_id: profile.id,
       typ: v.id,
       punkte: req,
-      status: "offen",
+      status: "genehmigt",
     });
 
+    // Punkte sofort abziehen
+       await supabase.rpc('punkte_abziehen', { 
+      user_id: profile.id, 
+      amount: req })
+    });
+
+    // Admin per Mail informieren
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -106,6 +114,9 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
         console.error("Gutschein-Mail Fehler:", err);
       }
     }
+
+    // Profil lokal aktualisieren
+    onProfileUpdate({ ...profile, punkte: (profile.punkte ?? 0) - req });
 
     setRedeemType(null);
     setDone(true);
@@ -197,9 +208,10 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
         </button>
       </div>
 
+      {/* FIX: Erfolgsmeldung angepasst – kein Admin-Schritt mehr nötig */}
       {done && (
         <div style={{ background: "#e8f5ee", color: "#1a7a4a", padding: "10px 14px", borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
-          ✅ Anfrage gesendet – der Admin prüft sie!
+          ✅ Gutschein wird vorbereitet – der Admin bringt ihn dir mit!
         </div>
       )}
 
@@ -232,6 +244,9 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
       </div>
 
       <div style={p.sectionTitle}>Meine Schichten</div>
+      {bookings.length === 0 && (
+        <p style={{ fontSize: 13, color: "#9ca3af", textAlign: "center", padding: "16px 0" }}>Noch keine Schichten.</p>
+      )}
       {bookings.map((b) => (
         <div key={b.id} style={p.shiftItem}>
           <div style={{ flex: 1 }}>
@@ -263,7 +278,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
             <IRow label="Deine Punkte"     value={`${pts} Punkte`} color={pts < (settings[redeemType.ptsKey] as number) ? "#c0392b" : undefined} />
             <div style={{ height: 16 }} />
             {pts >= (settings[redeemType.ptsKey] as number) ? (
-              <button style={p.btnPrimary} onClick={() => handleRedeem(redeemType)}>Anfrage senden</button>
+              <button style={p.btnPrimary} onClick={() => handleRedeem(redeemType)}>Gutschein anfordern</button>
             ) : (
               <div style={p.notEnough}>
                 Nicht genug Punkte. Dir fehlen noch <strong>{(settings[redeemType.ptsKey] as number) - pts} Punkte</strong>.

@@ -49,6 +49,19 @@ export default function Login() {
 
     setLoading(true)
 
+    // FIX Fall 1: Prüfen ob Name bereits existiert → verhindert Duplikat-Accounts
+    const { data: existingName } = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('name', name.trim())
+      .limit(1)
+
+    if (existingName && existingName.length > 0) {
+      setError('Ein Mitglied mit diesem Namen existiert bereits. Bitte wende dich an deinen Admin.')
+      setLoading(false)
+      return
+    }
+
     const vorname = name.trim().split(' ')[0]
     const fullName = name.trim()
 
@@ -68,7 +81,6 @@ export default function Login() {
       return
     }
 
-  
     setMode('erfolg')
     setLoading(false)
   }
