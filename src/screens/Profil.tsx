@@ -90,7 +90,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
     // Punkte sofort abziehen
        await supabase.rpc('punkte_abziehen', { 
       user_id: profile.id, 
-      amount: req })
+      amount: req 
     });
 
     // Admin per Mail informieren
