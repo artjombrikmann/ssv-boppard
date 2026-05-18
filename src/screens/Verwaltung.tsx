@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+mport { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Profile, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
 
@@ -43,22 +43,17 @@ export default function Verwaltung({ profile }: Props) {
   async function testMailSenden(typ: 'reminder' | 'gutschein', adminEmail: string) {
     setTestLoading(typ)
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { showToast('❌ Keine Session'); setTestLoading(null); return }
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+    const functionName = typ === 'reminder' ? 'schicht-reminder' : 'gutschein-anfrage'
     try {
-      if (typ === 'reminder') {
-        await fetch(`${supabaseUrl}/functions/v1/schicht-reminder`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ test_mode: true, test_email: adminEmail }),
-        })
-      } else {
-        await fetch(`${supabaseUrl}/functions/v1/gutschein-anfrage`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ test_mode: true, test_email: adminEmail }),
-        })
-      }
+      await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${anonKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ test_mode: true, test_email: adminEmail }),
+      })
       showToast(`✅ Test-Mail gesendet an ${adminEmail}`)
     } catch (err) {
       showToast('❌ Fehler: ' + String(err))
