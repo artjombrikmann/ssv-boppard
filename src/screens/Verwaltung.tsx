@@ -12,7 +12,7 @@ interface VeranstaltungMitAuslastung extends Veranstaltung {
   auslastung: number
 }
 
-export default function Verwaltung(_: Props) {
+export default function Verwaltung({ profile }: Props) {
   const [tab,        setTab]        = useState<AdminTab>('uebersicht')
   const [bookings,   setBookings]   = useState<Schichtbelegung[]>([])
   const [members,    setMembers]    = useState<Profile[]>([])
@@ -36,8 +36,35 @@ export default function Verwaltung(_: Props) {
   const [allSchichten,   setAllSchichten]   = useState<Schicht[]>([])
   const [userBelegungen, setUserBelegungen] = useState<number[]>([])
   const [loeschenUserId, setLoeschenUserId] = useState<string | null>(null)
+  const [testLoading, setTestLoading] = useState<string | null>(null)
 
   useEffect(() => { loadAll() }, [])
+
+  async function testMailSenden(typ: 'reminder' | 'gutschein', adminEmail: string) {
+    setTestLoading(typ)
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { showToast('❌ Keine Session'); setTestLoading(null); return }
+    try {
+      if (typ === 'reminder') {
+        await fetch(`${supabaseUrl}/functions/v1/schicht-reminder`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ test_mode: true, test_email: adminEmail }),
+        })
+      } else {
+        await fetch(`${supabaseUrl}/functions/v1/gutschein-anfrage`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ test_mode: true, test_email: adminEmail }),
+        })
+      }
+      showToast(`✅ Test-Mail gesendet an ${adminEmail}`)
+    } catch (err) {
+      showToast('❌ Fehler: ' + String(err))
+    }
+    setTestLoading(null)
+  }
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
@@ -268,6 +295,28 @@ export default function Verwaltung(_: Props) {
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Test-Mails */}
+          <div>
+            <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>Mail-Test</p>
+            <div style={{ background:'#fff', border:'1px solid #f3f4f6', borderRadius:14, padding:'14px 16px', display:'flex', flexDirection:'column', gap:10 }}>
+              <p style={{ fontSize:12, color:'#9ca3af', margin:0 }}>Sendet eine Test-Mail an deine Admin-E-Mail-Adresse.</p>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                <button
+                  onClick={() => testMailSenden('reminder', profile.email ?? settings.admin_email)}
+                  disabled={testLoading !== null}
+                  style={{ ...btnSm, background: testLoading === 'reminder' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'reminder' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
+                  {testLoading === 'reminder' ? '⏳ Sende...' : '🔔 Reminder testen'}
+                </button>
+                <button
+                  onClick={() => testMailSenden('gutschein', profile.email ?? settings.admin_email)}
+                  disabled={testLoading !== null}
+                  style={{ ...btnSm, background: testLoading === 'gutschein' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'gutschein' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
+                  {testLoading === 'gutschein' ? '⏳ Sende...' : '🎫 Gutschein testen'}
+                </button>
+              </div>
             </div>
           </div>
 
