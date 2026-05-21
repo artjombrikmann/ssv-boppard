@@ -63,6 +63,19 @@ export default function Login() {
       return
     }
 
+    // Duplikat-Email prüfen
+    const { data: existingEmail } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', email.trim().toLowerCase())
+      .limit(1)
+
+    if (existingEmail && existingEmail.length > 0) {
+      setError('Diese E-Mail-Adresse ist bereits registriert.')
+      setLoading(false)
+      return
+    }
+
     // Duplikat-Name prüfen
     const { data: existingName } = await supabase
       .from('profiles')
