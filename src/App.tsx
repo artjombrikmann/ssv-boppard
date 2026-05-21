@@ -123,7 +123,7 @@ export default function App() {
   const screenProps = { profile, onTabChange: (tab: string) => handleTabChange(tab as TabId) }
 
   return (
-    <div style={{ maxWidth:420, margin:'0 auto', minHeight:'100vh', background:'#f8faf8', position:'relative' }}>
+    <div style={{ maxWidth:680, margin:'0 auto', minHeight:'100vh', background:'#f8faf8', position:'relative' }}>
 
       {/* Header */}
       <header style={{
@@ -342,7 +342,7 @@ export default function App() {
       {/* Bottom Nav */}
       <nav style={{
         position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
-        width:'100%', maxWidth:420,
+        width:'100%', maxWidth:680,
         background:'rgba(255,255,255,.95)', backdropFilter:'blur(12px)',
         borderTop:'1px solid #f3f4f6',
         display:'flex', zIndex:100,
