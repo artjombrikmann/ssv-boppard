@@ -9,6 +9,7 @@ export default function Login() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [password2, setPassword2] = useState('')
+  const [freischaltcode, setFreischaltcode] = useState('')
   const [showPw, setShowPw]     = useState(false)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
@@ -43,13 +44,26 @@ export default function Login() {
     if (!password)                         { setError('Bitte Passwort eingeben.'); return }
     if (password.length < 8)               { setError('Passwort muss mindestens 8 Zeichen haben.'); return }
     if (password !== password2)            { setError('Passwörter stimmen nicht überein.'); return }
+    if (!freischaltcode.trim())            { setError('Bitte Freischaltcode eingeben.'); return }
     if (!consentRangliste)  { setError('⚠️ Bitte der Ranglisten-Anzeige zustimmen.'); return }
     if (!consentDsgvo)      { setError('⚠️ Bitte die Datenschutzerklärung akzeptieren.'); return }
     if (!consentErinnerung) { setError('⚠️ Bitte den E-Mail-Erinnerungen zustimmen.'); return }
 
     setLoading(true)
 
-    // FIX Fall 1: Prüfen ob Name bereits existiert → verhindert Duplikat-Accounts
+    // FIX: Freischaltcode gegen DB prüfen
+    const { data: settings } = await supabase
+      .from('einstellungen')
+      .select('freischaltcode')
+      .single()
+
+    if (!settings || freischaltcode.trim() !== settings.freischaltcode) {
+      setError('❌ Ungültiger Freischaltcode. Bitte wende dich an deinen Admin.')
+      setLoading(false)
+      return
+    }
+
+    // Duplikat-Name prüfen
     const { data: existingName } = await supabase
       .from('profiles')
       .select('id')
@@ -110,7 +124,7 @@ export default function Login() {
           { title:'2. Erhobene Daten', text:'Wir speichern: Name, E-Mail, Punktestand, Schichthistorie und Einlösungsanfragen. Diese Daten werden ausschließlich vereinsintern verwendet.' },
           { title:'3. Rangliste & Punktestand', text:'Dein Name und dein Punktestand sind in der vereinsinternen Rangliste für eingeloggte Mitglieder sichtbar.' },
           { title:'4. E-Mail-Erinnerungen', text:'Wir senden automatische Erinnerungen 5 und 2 Tage vor deiner Schicht. Diese sind für den Betrieb der App erforderlich.' },
-          { title:'5. Deine Rechte', text:'Du hast das Recht auf Auskunft, Berichtigung und Löschung. Kontakt: geschaeftsfuehrung@ssv-boppard.de' },
+          { title:'5. Deine Rechte', text:'Du hast das Recht auf Auskunft, Berichtigung und Löschung. Kontakt: info@ssv-boppard.de' },
         ].map(item => (
           <div key={item.title} style={s.dsCard}>
             <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13, marginBottom:6 }}>{item.title}</p>
@@ -192,6 +206,13 @@ export default function Login() {
             {mode === 'register' && (
               <Field label="Passwort bestätigen" icon="lock">
                 <input className="input" type="password" value={password2} onChange={e => setPassword2(e.target.value)} placeholder="Passwort wiederholen" style={s.inputStyle} />
+              </Field>
+            )}
+
+            {/* Freischaltcode */}
+            {mode === 'register' && (
+              <Field label="Freischaltcode" icon="key">
+                <input className="input" type="text" value={freischaltcode} onChange={e => setFreischaltcode(e.target.value)} placeholder="Code von deinem Verein" style={s.inputStyle} />
               </Field>
             )}
 

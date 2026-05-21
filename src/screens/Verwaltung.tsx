@@ -19,7 +19,8 @@ export default function Verwaltung({ profile }: Props) {
   const [events,     setEvents]     = useState<VeranstaltungMitAuslastung[]>([])
   const [archiv,     setArchiv]     = useState<VeranstaltungMitAuslastung[]>([])
   const [kategorien, setKategorien] = useState<Kategorie[]>([])
-  const [settings,   setSettings]   = useState<Einstellungen>({ id:1, punkte_kurz:5, punkte_normal:10, punkte_lang:15, punkte_sonder:20, bonus_turnier:3, bonus_fest:2, admin_email:'geschaeftsfuehrung@ssv-boppard.de' })
+  const [settings,   setSettings]   = useState<Einstellungen>({ id:1, punkte_kurz:5, punkte_normal:10, punkte_lang:15, punkte_sonder:20, bonus_turnier:3, bonus_fest:2, admin_email:'info@ssv-boppard.de' })
+  const [freischaltcode, setFreischaltcode] = useState('')
   const [newEv,      setNewEv]      = useState({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
   const [newSh,      setNewSh]      = useState({ bezeichnung:'', veranstaltung_id:0, kategorie_id:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' })
   const [newKat,     setNewKat]     = useState('')
@@ -36,9 +37,8 @@ export default function Verwaltung({ profile }: Props) {
   const [allSchichten,   setAllSchichten]   = useState<Schicht[]>([])
   const [userBelegungen, setUserBelegungen] = useState<number[]>([])
   const [loeschenUserId, setLoeschenUserId] = useState<string | null>(null)
-  const [testLoading, setTestLoading] = useState<string | null>(null)
+  const [testLoading,    setTestLoading]    = useState<string | null>(null)
 
-  
   useEffect(() => { loadAll() }, [])
 
   async function testMailSenden(typ: 'reminder' | 'gutschein', adminEmail: string) {
@@ -88,7 +88,10 @@ export default function Verwaltung({ profile }: Props) {
     setMembers(m.data ?? [])
     setEvents(mitAuslastung(alleEvents.filter(ev => ev.status !== 'Abgeschlossen')))
     setArchiv(mitAuslastung(alleEvents.filter(ev => ev.status === 'Abgeschlossen')))
-    if (s.data) setSettings(s.data)
+    if (s.data) {
+      setSettings(s.data)
+      setFreischaltcode((s.data as any).freischaltcode ?? '')
+    }
     setKategorien(k.data ?? [])
   }
 
@@ -150,7 +153,7 @@ export default function Verwaltung({ profile }: Props) {
   }
 
   async function saveSettings() {
-    await supabase.from('einstellungen').upsert({ id: 1, ...settings })
+    await supabase.from('einstellungen').upsert({ id: 1, ...settings, freischaltcode })
     setSaved(true); setTimeout(() => setSaved(false), 2000); showToast('✅ Einstellungen gespeichert!')
   }
 
@@ -220,7 +223,6 @@ export default function Verwaltung({ profile }: Props) {
     showToast('🗑️ Zuweisung entfernt'); loadAll(); loadAllSchichten()
   }
 
-  // FIX: Einlösungen-Tab entfernt
   const TABS: { id: AdminTab; label: string }[] = [
     { id:'uebersicht', label:'Übersicht' },
     { id:'veranstaltungen', label:'Events' },
@@ -251,8 +253,6 @@ export default function Verwaltung({ profile }: Props) {
 
       {tab === 'uebersicht' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-
-          {/* Hero Kennzahlen */}
           <div style={{ background:'#0d631b', borderRadius:20, padding:20, color:'#fff' }}>
             <p style={{ fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'.08em', opacity:.7, marginBottom:12 }}>Vereins-Übersicht</p>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -270,7 +270,6 @@ export default function Verwaltung({ profile }: Props) {
             </div>
           </div>
 
-          {/* Schnellzugriff */}
           <div>
             <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>Schnellzugriff</p>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -294,21 +293,16 @@ export default function Verwaltung({ profile }: Props) {
             </div>
           </div>
 
-          {/* Test-Mails */}
           <div>
             <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>Mail-Test</p>
             <div style={{ background:'#fff', border:'1px solid #f3f4f6', borderRadius:14, padding:'14px 16px', display:'flex', flexDirection:'column', gap:10 }}>
               <p style={{ fontSize:12, color:'#9ca3af', margin:0 }}>Sendet eine Test-Mail an deine Admin-E-Mail-Adresse.</p>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                <button
-                  onClick={() => testMailSenden('reminder', profile.email ?? settings.admin_email)}
-                  disabled={testLoading !== null}
+                <button onClick={() => testMailSenden('reminder', profile.email ?? settings.admin_email)} disabled={testLoading !== null}
                   style={{ ...btnSm, background: testLoading === 'reminder' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'reminder' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
                   {testLoading === 'reminder' ? '⏳ Sende...' : '🔔 Reminder testen'}
                 </button>
-                <button
-                  onClick={() => testMailSenden('gutschein', profile.email ?? settings.admin_email)}
-                  disabled={testLoading !== null}
+                <button onClick={() => testMailSenden('gutschein', profile.email ?? settings.admin_email)} disabled={testLoading !== null}
                   style={{ ...btnSm, background: testLoading === 'gutschein' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'gutschein' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
                   {testLoading === 'gutschein' ? '⏳ Sende...' : '🎫 Gutschein testen'}
                 </button>
@@ -316,7 +310,6 @@ export default function Verwaltung({ profile }: Props) {
             </div>
           </div>
 
-          {/* Ausstehende Punkte */}
           <Section title="Ausstehende Punkte vergeben">
             {bookings.filter(b => !b.punkte_vergeben).length === 0
               ? <Empty text="Alle Punkte vergeben ✅" />
@@ -524,7 +517,18 @@ export default function Verwaltung({ profile }: Props) {
             ))}
           </Section>
           <Section title="Admin E-Mail">
-            <F label="Einlösungs-Benachrichtigungen an"><input style={inp} type="email" value={settings.admin_email} onChange={e=>setSettings({...settings,admin_email:e.target.value})} placeholder="admin@ssv-boppard.de"/></F>
+            <F label="Einlösungs-Benachrichtigungen an">
+              <input style={inp} type="email" value={settings.admin_email} onChange={e=>setSettings({...settings,admin_email:e.target.value})} placeholder="info@ssv-boppard.de"/>
+            </F>
+          </Section>
+          {/* NEU: Freischaltcode */}
+          <Section title="Freischaltcode">
+            <InfoBox text="Mitglieder brauchen diesen Code bei der Registrierung. Nur Personen mit dem Code können sich anmelden." />
+            <div style={{ marginTop:10 }}>
+              <F label="Aktueller Code">
+                <input style={inp} type="text" value={freischaltcode} onChange={e => setFreischaltcode(e.target.value)} placeholder="z.B. SSV2026" />
+              </F>
+            </div>
           </Section>
           <button style={btnPrimary} onClick={saveSettings}>{saved ? '✅ Gespeichert!' : 'Einstellungen speichern'}</button>
         </div>
