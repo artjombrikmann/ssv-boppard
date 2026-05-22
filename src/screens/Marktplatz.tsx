@@ -248,6 +248,9 @@ export default function Marktplatz({ profile }: Props) {
             <div style={{ display:'flex', gap:6, marginBottom:16 }}>
               <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:900, padding:'3px 10px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>+{selected.punkte} Pkt</span>
               <span style={{ background:'#f3f4f6', color:'#5d5e61', fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99 }}>{selected.veranstaltungen?.name}</span>
+              {(selected as any).kategorien?.name && (
+                <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99 }}>{(selected as any).kategorien.name}</span>
+              )}
             </div>
             <InfoRow label="Uhrzeit"  value={`${selected.startzeit?.slice(0,5)} – ${selected.endzeit?.slice(0,5)} Uhr`} />
             <InfoRow label="Aufgabe"  value={selected.beschreibung ?? '–'} />
