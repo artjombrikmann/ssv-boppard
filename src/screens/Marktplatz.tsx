@@ -18,6 +18,7 @@ export default function Marktplatz({ profile }: Props) {
   const [saving,          setSaving]          = useState(false)
   const [showDanke,       setShowDanke]       = useState(false)
   const [dankeShift,      setDankeShift]      = useState<Schicht | null>(null)
+  const [expandedEvents,  setExpandedEvents]  = useState<Set<string>>(new Set())
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animRef   = useRef<number>(0)
 
@@ -26,7 +27,6 @@ export default function Marktplatz({ profile }: Props) {
   async function loadData() {
     const [{ data: sh }, { data: bk }, { data: kat }, { data: ev }] = await Promise.all([
       supabase.from('schichten').select('*, veranstaltungen(name), kategorien(name)').order('startzeit'),
-      // FIX: Nur aktive Belegungen (nicht abgesagte) als "meine Schichten" zählen
       supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', profile.id).neq('status', 'abgesagt'),
       supabase.from('kategorien').select('*').order('name'),
       supabase.from('veranstaltungen').select('id, name, datum, datum_ende, ort, status, kategorie'),
@@ -37,6 +37,15 @@ export default function Marktplatz({ profile }: Props) {
     setVeranstaltungen(ev ?? [])
   }
 
+  function toggleEvent(evId: string) {
+    setExpandedEvents(prev => {
+      const next = new Set(prev)
+      if (next.has(evId)) next.delete(evId)
+      else next.add(evId)
+      return next
+    })
+  }
+
   async function openDetail(s: Schicht) {
     setSelected(s)
     setTeilnehmer([])
@@ -45,7 +54,6 @@ export default function Marktplatz({ profile }: Props) {
       .from('schichtbelegungen')
       .select('profiles(name, display_name)')
       .eq('schicht_id', s.id)
-      // FIX: Nur aktive Teilnehmer anzeigen, keine abgesagten
       .neq('status', 'abgesagt')
     setTeilnehmer((data ?? []).map((b: any) => ({
       name: b.profiles?.display_name || b.profiles?.name || 'Unbekannt'
@@ -55,53 +63,27 @@ export default function Marktplatz({ profile }: Props) {
 
   async function joinShift(s: Schicht) {
     setSaving(true)
-
-    // FIX: Prüfen ob eine alte (abgesagte) Belegung existiert → reaktivieren statt neu anlegen
-    // Verhindert doppelte Punktevergabe da punkte_vergeben erhalten bleibt
     const { data: existing } = await supabase
       .from('schichtbelegungen')
       .select('id, punkte_vergeben')
       .eq('schicht_id', s.id)
       .eq('mitglied_id', profile.id)
       .single()
-
     if (existing) {
-      // Alte Belegung reaktivieren
-      await supabase
-        .from('schichtbelegungen')
-        .update({ status: 'Angemeldet' })
-        .eq('id', existing.id)
+      await supabase.from('schichtbelegungen').update({ status: 'Angemeldet' }).eq('id', existing.id)
     } else {
-      // Neue Belegung anlegen
-      await supabase
-        .from('schichtbelegungen')
-        .insert({ schicht_id: s.id, mitglied_id: profile.id, status: 'Angemeldet' })
+      await supabase.from('schichtbelegungen').insert({ schicht_id: s.id, mitglied_id: profile.id, status: 'Angemeldet' })
     }
-
     await supabase.from('schichten').update({ belegt: s.belegt + 1 }).eq('id', s.id)
     await loadData()
-    setSaving(false)
-    setSelected(null)
-    setDankeShift(s)
-    setShowDanke(true)
-    startKonfetti()
+    setSaving(false); setSelected(null); setDankeShift(s); setShowDanke(true); startKonfetti()
   }
 
   async function leaveShift(s: Schicht) {
     setSaving(true)
-
-    // FIX: Status auf 'abgesagt' setzen statt löschen
-    // So bleibt punkte_vergeben erhalten → kein Doppelvergabe möglich
-    await supabase
-      .from('schichtbelegungen')
-      .update({ status: 'abgesagt' })
-      .eq('schicht_id', s.id)
-      .eq('mitglied_id', profile.id)
-
+    await supabase.from('schichtbelegungen').update({ status: 'abgesagt' }).eq('schicht_id', s.id).eq('mitglied_id', profile.id)
     await supabase.from('schichten').update({ belegt: Math.max(0, s.belegt - 1) }).eq('id', s.id)
-    await loadData()
-    setSaving(false)
-    setSelected(null)
+    await loadData(); setSaving(false); setSelected(null)
   }
 
   function closeDanke() { setShowDanke(false); stopKonfetti() }
@@ -111,9 +93,7 @@ export default function Marktplatz({ profile }: Props) {
   function startKonfetti() {
     const canvas = canvasRef.current
     if (!canvas) return
-    canvas.style.display = 'block'
-    canvas.width  = window.innerWidth
-    canvas.height = window.innerHeight
+    canvas.style.display = 'block'; canvas.width = window.innerWidth; canvas.height = window.innerHeight
     const ctx = canvas.getContext('2d')!
     const parts = Array.from({ length: 120 }, () => ({
       x: Math.random() * canvas.width, y: Math.random() * -canvas.height,
@@ -123,19 +103,15 @@ export default function Marktplatz({ profile }: Props) {
       vx: (Math.random() - .5) * 4, vy: Math.random() * 4 + 2, opacity: 1,
     }))
     function draw() {
-      ctx.clearRect(0, 0, canvas!.width, canvas!.height)
-      let alive = false
+      ctx.clearRect(0, 0, canvas!.width, canvas!.height); let alive = false
       parts.forEach(p => {
         p.x += p.vx; p.y += p.vy; p.rot += p.rotSpeed
         if (p.y > canvas!.height * .7) p.opacity -= .02
         if (p.opacity > 0) alive = true
-        ctx.save(); ctx.globalAlpha = Math.max(0, p.opacity)
-        ctx.translate(p.x, p.y); ctx.rotate(p.rot * Math.PI / 180)
-        ctx.fillStyle = p.farbe; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h)
-        ctx.restore()
+        ctx.save(); ctx.globalAlpha = Math.max(0, p.opacity); ctx.translate(p.x, p.y); ctx.rotate(p.rot * Math.PI / 180)
+        ctx.fillStyle = p.farbe; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore()
       })
-      if (alive) animRef.current = requestAnimationFrame(draw)
-      else canvas!.style.display = 'none'
+      if (alive) animRef.current = requestAnimationFrame(draw); else canvas!.style.display = 'none'
     }
     draw()
   }
@@ -143,19 +119,13 @@ export default function Marktplatz({ profile }: Props) {
   function stopKonfetti() {
     cancelAnimationFrame(animRef.current)
     const canvas = canvasRef.current
-    if (canvas) {
-      canvas.style.display = 'none'
-      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
-    }
+    if (canvas) { canvas.style.display = 'none'; canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height) }
   }
 
   const isMine = (s: Schicht) => myBookings.includes(s.id)
   const isFull = (s: Schicht) => s.belegt >= s.plaetze
 
-  const aktiveEventIds = veranstaltungen
-    .filter(v => v.status !== 'Abgeschlossen')
-    .map(v => v.id)
-
+  const aktiveEventIds = veranstaltungen.filter(v => v.status !== 'Abgeschlossen').map(v => v.id)
   const filtered = schichten
     .filter(s => aktiveEventIds.includes(s.veranstaltung_id))
     .filter(s => filter === null || s.kategorie_id === filter)
@@ -199,34 +169,79 @@ export default function Marktplatz({ profile }: Props) {
       {Object.entries(grouped).map(([evId, gruppe]) => {
         const ev = veranstaltungen.find(v => v.id === Number(evId))
         const banner = getBanner(ev?.kategorie as any)
+        const isExpanded = expandedEvents.has(evId)
+        const isVereinsfest = ev?.kategorie === 'vereinsfest'
+        const meineSchichtenCount = gruppe.shifts.filter(s => isMine(s)).length
+        const freieSchichtenCount = gruppe.shifts.filter(s => !isFull(s)).length
+
         return (
           <div key={evId} style={{ background:'#fff', borderRadius:24, overflow:'hidden', border:'1px solid #f3f4f6' }}>
-            <div style={{ height:90, background: banner.gradient, position:'relative', display:'flex', alignItems:'flex-end', padding:'12px 16px' }}>
-              <div>
+
+            {/* Banner */}
+            <div style={{ height:110, background: banner.gradient, position:'relative', display:'flex', alignItems:'flex-end', padding:'12px 16px', overflow:'hidden' }}>
+
+              {/* Konfetti-Deko für Vereinsfest */}
+              {isVereinsfest && (
+                <div style={{ position:'absolute', inset:0, pointerEvents:'none' }}>
+                  {['🎊','🎈','🎉','✨','🎊','🎈','✨'].map((emoji, i) => (
+                    <span key={i} style={{ position:'absolute', fontSize: 14 + (i % 3) * 4, opacity: 0.5 + (i % 3) * 0.15,
+                      top: `${10 + (i * 13) % 60}%`, left: `${5 + (i * 17) % 85}%`,
+                      transform: `rotate(${(i * 37) % 60 - 30}deg)` }}>
+                      {emoji}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ flex:1, position:'relative', zIndex:1 }}>
                 <span style={{ background:'rgba(255,255,255,.2)', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 8px', borderRadius:4, textTransform:'uppercase', letterSpacing:'.06em' }}>
                   {banner.label}
                 </span>
-                <h2 style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:16, color:'#fff', marginTop:4 }}>
+                <h2 style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:17, color:'#fff', marginTop:4 }}>
                   {gruppe.name}
                 </h2>
                 {ev?.datum && (
-                  <p style={{ fontSize:11, color:'rgba(255,255,255,.8)', marginTop:3, fontWeight:600 }}>
-                    📅 {new Date(ev.datum).toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric' })}
+                  <p style={{ fontSize:13, color:'rgba(255,255,255,.95)', marginTop:4, fontWeight:700 }}>
+                    📅 {new Date(ev.datum).toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'long', year:'numeric' })}
                     {ev.datum_ende && ev.datum_ende !== ev.datum && (
-                      <> – {new Date(ev.datum_ende).toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric' })}</>
+                      <> – {new Date(ev.datum_ende).toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'long' })}</>
                     )}
                   </p>
                 )}
               </div>
-              <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', fontSize:52, opacity:.25, lineHeight:1 }}>
+              <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', fontSize:56, opacity:.3, lineHeight:1, zIndex:0 }}>
                 {banner.icon}
               </span>
             </div>
-            <div style={{ padding:'12px', display:'flex', flexDirection:'column', gap:8 }}>
-              {gruppe.shifts.map(s => (
-                <ShiftItem key={s.id} shift={s} isMine={isMine(s)} isFull={isFull(s)} onClick={() => openDetail(s)} />
-              ))}
-            </div>
+
+            {/* Aufklapp-Button */}
+            <button onClick={() => toggleEvent(evId)}
+              style={{ width:'100%', padding:'12px 16px', border:'none', background: isExpanded ? '#f8faf8' : '#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', borderTop:'1px solid #f3f4f6' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span className="material-symbols-outlined" style={{ fontSize:20, color:'#0d631b' }}>event_note</span>
+                <div style={{ textAlign:'left' }}>
+                  <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13, color:'#111827' }}>
+                    {gruppe.shifts.length} Schicht{gruppe.shifts.length !== 1 ? 'en' : ''} anzeigen
+                  </p>
+                  <p style={{ fontSize:11, color:'#9ca3af', marginTop:1 }}>
+                    {freieSchichtenCount} frei
+                    {meineSchichtenCount > 0 && <span style={{ marginLeft:6, color:'#0d631b', fontWeight:700 }}>· {meineSchichtenCount} angemeldet</span>}
+                  </p>
+                </div>
+              </div>
+              <span className="material-symbols-outlined" style={{ fontSize:24, color:'#0d631b', transition:'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                expand_more
+              </span>
+            </button>
+
+            {/* Schichten */}
+            {isExpanded && (
+              <div style={{ padding:'8px 12px 12px', display:'flex', flexDirection:'column', gap:8, borderTop:'1px solid #f3f4f6' }}>
+                {gruppe.shifts.map(s => (
+                  <ShiftItem key={s.id} shift={s} isMine={isMine(s)} isFull={isFull(s)} onClick={() => openDetail(s)} />
+                ))}
+              </div>
+            )}
           </div>
         )
       })}
@@ -241,11 +256,11 @@ export default function Marktplatz({ profile }: Props) {
       {selected && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}
           onClick={() => setSelected(null)}>
-          <div style={{ background:'#fff', borderRadius:'20px 20px 0 0', padding:20, width:'100%', maxWidth:420, maxHeight:'90vh', overflowY:'auto' }}
+          <div style={{ background:'#fff', borderRadius:'20px 20px 0 0', padding:20, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ width:40, height:4, background:'#e5e7eb', borderRadius:2, margin:'0 auto 16px' }} />
             <h2 style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:18, marginBottom:8 }}>{selected.bezeichnung}</h2>
-            <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+            <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
               <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:900, padding:'3px 10px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>+{selected.punkte} Pkt</span>
               <span style={{ background:'#f3f4f6', color:'#5d5e61', fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99 }}>{selected.veranstaltungen?.name}</span>
               {(selected as any).kategorien?.name && (
