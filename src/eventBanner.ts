@@ -1,5 +1,3 @@
-// src/eventBanner.ts
-
 export type Kategorie = 'heimspiel' | 'vereinsfest' | 'flag-football' | 'turnier';
 
 export const eventBanner: Record<Kategorie, {
@@ -8,24 +6,24 @@ export const eventBanner: Record<Kategorie, {
   label: string;
 }> = {
   heimspiel: {
-    gradient: 'linear-gradient(135deg, #1a7a1a 0%, #2ecc40 60%, #145214 100%)',
+    gradient: 'linear-gradient(135deg, #0a1a0f 0%, #0d2d10 50%, #0a1a0f 100%)',
     icon: '⚽',
     label: 'Heimspiel',
   },
   vereinsfest: {
-    gradient: 'linear-gradient(135deg, #e67e22 0%, #f9ca24 60%, #c0392b 100%)',
+    gradient: 'linear-gradient(135deg, #1a0a00 0%, #3d1a00 50%, #1a0a00 100%)',
     icon: '🎉',
     label: 'Vereinsfest',
   },
   'flag-football': {
-    gradient: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+    gradient: 'linear-gradient(135deg, #0a0a1a 0%, #0f0f3d 50%, #0a0a1a 100%)',
     icon: '🏈',
     label: 'Flag-Football',
   },
   turnier: {
-    gradient: 'linear-gradient(135deg, #b8860b 0%, #ffd700 50%, #b8860b 100%)',
-    icon: '🏆',
-    label: 'Turnier',
+    gradient: 'linear-gradient(135deg, #0a1a0f 0%, #0d2d10 40%, #0a1505 100%)',
+    icon: '⚽',
+    label: 'WM 2026',
   },
 };
 
