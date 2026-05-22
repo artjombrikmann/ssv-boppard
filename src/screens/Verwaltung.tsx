@@ -39,6 +39,11 @@ export default function Verwaltung({ profile }: Props) {
   const [loeschenUserId, setLoeschenUserId] = useState<string | null>(null)
   const [testLoading,    setTestLoading]    = useState<string | null>(null)
 
+  // Schicht bearbeiten
+  const [editSchicht,    setEditSchicht]    = useState<Schicht | null>(null)
+  const [editForm,       setEditForm]       = useState({ bezeichnung:'', kategorie_id:'', startzeit:'', endzeit:'', plaetze:1, punkte:10, beschreibung:'' })
+  const [editLoading,    setEditLoading]    = useState(false)
+
   useEffect(() => { loadAll() }, [])
 
   async function testMailSenden(typ: 'reminder' | 'gutschein', adminEmail: string) {
@@ -49,10 +54,7 @@ export default function Verwaltung({ profile }: Props) {
     try {
       await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${anonKey}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { Authorization: `Bearer ${anonKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ test_mode: true, test_email: adminEmail }),
       })
       showToast(`✅ Test-Mail gesendet an ${adminEmail}`)
@@ -88,10 +90,7 @@ export default function Verwaltung({ profile }: Props) {
     setMembers(m.data ?? [])
     setEvents(mitAuslastung(alleEvents.filter(ev => ev.status !== 'Abgeschlossen')))
     setArchiv(mitAuslastung(alleEvents.filter(ev => ev.status === 'Abgeschlossen')))
-    if (s.data) {
-      setSettings(s.data)
-      setFreischaltcode((s.data as any).freischaltcode ?? '')
-    }
+    if (s.data) { setSettings(s.data); setFreischaltcode((s.data as any).freischaltcode ?? '') }
     setKategorien(k.data ?? [])
   }
 
@@ -150,6 +149,40 @@ export default function Verwaltung({ profile }: Props) {
     const { error } = await supabase.from('schichten').delete().eq('id', s.id)
     if (error) showToast('❌ Fehler: ' + error.message)
     else { showToast('🗑️ Schicht gelöscht'); loadAll() }
+  }
+
+  function openEditSchicht(s: Schicht) {
+    setEditSchicht(s)
+    setEditForm({
+      bezeichnung: s.bezeichnung,
+      kategorie_id: s.kategorie_id ?? '',
+      startzeit: s.startzeit?.slice(0,5) ?? '',
+      endzeit: s.endzeit?.slice(0,5) ?? '',
+      plaetze: s.plaetze,
+      punkte: s.punkte,
+      beschreibung: s.beschreibung ?? '',
+    })
+  }
+
+  async function saveEditSchicht() {
+    if (!editSchicht) return
+    if (!editForm.bezeichnung.trim()) { showToast('❌ Bezeichnung darf nicht leer sein'); return }
+    if (editForm.plaetze < editSchicht.belegt) { showToast(`❌ Plätze können nicht unter ${editSchicht.belegt} (bereits belegt) gesetzt werden`); return }
+    setEditLoading(true)
+    const { error } = await supabase.from('schichten').update({
+      bezeichnung: editForm.bezeichnung.trim(),
+      kategorie_id: editForm.kategorie_id || null,
+      startzeit: editForm.startzeit,
+      endzeit: editForm.endzeit,
+      plaetze: editForm.plaetze,
+      punkte: editForm.punkte,
+      beschreibung: editForm.beschreibung || null,
+    }).eq('id', editSchicht.id)
+    setEditLoading(false)
+    if (error) { showToast('❌ Fehler: ' + error.message); return }
+    showToast('✅ Schicht gespeichert!')
+    setEditSchicht(null)
+    loadAll()
   }
 
   async function saveSettings() {
@@ -413,9 +446,16 @@ export default function Verwaltung({ profile }: Props) {
                             <span style={{ fontSize:10, fontWeight:700, color: farbe }}>{s.belegt}/{s.plaetze}</span>
                           </div>
                         </div>
-                        <button onClick={() => deleteSchicht(s)} style={{ width:28, height:28, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', marginLeft:10, flexShrink:0 }}>
-                          <span className="material-symbols-outlined" style={{ fontSize:14, color:'#ef4444' }}>delete</span>
-                        </button>
+                        <div style={{ display:'flex', gap:6, marginLeft:10, flexShrink:0 }}>
+                          {/* Bearbeiten-Button */}
+                          <button onClick={() => openEditSchicht(s)} style={{ width:28, height:28, borderRadius:6, border:'none', background:'#e8f5ee', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize:14, color:'#0d631b' }}>edit</span>
+                          </button>
+                          {/* Löschen-Button */}
+                          <button onClick={() => deleteSchicht(s)} style={{ width:28, height:28, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize:14, color:'#ef4444' }}>delete</span>
+                          </button>
+                        </div>
                       </div>
                     )
                   })}
@@ -521,7 +561,6 @@ export default function Verwaltung({ profile }: Props) {
               <input style={inp} type="email" value={settings.admin_email} onChange={e=>setSettings({...settings,admin_email:e.target.value})} placeholder="info@ssv-boppard.de"/>
             </F>
           </Section>
-          {/* NEU: Freischaltcode */}
           <Section title="Freischaltcode">
             <InfoBox text="Mitglieder brauchen diesen Code bei der Registrierung. Nur Personen mit dem Code können sich anmelden." />
             <div style={{ marginTop:10 }}>
@@ -599,6 +638,57 @@ export default function Verwaltung({ profile }: Props) {
               })}
             </Section>
           )}
+        </div>
+      )}
+
+      {/* Schicht bearbeiten Modal */}
+      {editSchicht && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+          onClick={() => setEditSchicht(null)}>
+          <div style={{ background:'#fff', borderRadius:'20px 20px 0 0', padding:20, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ width:40, height:4, background:'#e5e7eb', borderRadius:2, margin:'0 auto 16px' }} />
+            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:18, marginBottom:16 }}>Schicht bearbeiten</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <F label="Bezeichnung">
+                <input style={inp} value={editForm.bezeichnung} onChange={e=>setEditForm({...editForm,bezeichnung:e.target.value})} placeholder="z.B. Kasse – Vormittag"/>
+              </F>
+              <F label="Kategorie">
+                <select style={inp} value={editForm.kategorie_id} onChange={e=>setEditForm({...editForm,kategorie_id:e.target.value})}>
+                  <option value="">– keine –</option>
+                  {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+                </select>
+              </F>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                <F label="Von"><input style={inp} type="time" value={editForm.startzeit} onChange={e=>setEditForm({...editForm,startzeit:e.target.value})}/></F>
+                <F label="Bis"><input style={inp} type="time" value={editForm.endzeit} onChange={e=>setEditForm({...editForm,endzeit:e.target.value})}/></F>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                <F label="Plätze">
+                  <input style={inp} type="number" min={editSchicht.belegt || 1} value={editForm.plaetze} onChange={e=>setEditForm({...editForm,plaetze:parseInt(e.target.value)||1})}/>
+                </F>
+                <F label="Punkte">
+                  <input style={inp} type="number" min="1" value={editForm.punkte} onChange={e=>setEditForm({...editForm,punkte:parseInt(e.target.value)||1})}/>
+                </F>
+              </div>
+              <F label="Aufgabe (optional)">
+                <input style={inp} value={editForm.beschreibung} onChange={e=>setEditForm({...editForm,beschreibung:e.target.value})} placeholder="Kurze Beschreibung"/>
+              </F>
+              {editSchicht.belegt > 0 && (
+                <div style={{ background:'#fff7ed', borderRadius:10, padding:'10px 12px', fontSize:12, color:'#b45309' }}>
+                  ⚠️ Diese Schicht hat bereits {editSchicht.belegt} Anmeldung(en). Plätze können nicht unter {editSchicht.belegt} gesetzt werden.
+                </div>
+              )}
+            </div>
+            <div style={{ display:'flex', gap:10, marginTop:20 }}>
+              <button onClick={() => setEditSchicht(null)} style={{ flex:1, padding:'12px', borderRadius:12, border:'1px solid #e5e7eb', background:'none', fontSize:13, cursor:'pointer', color:'#555' }}>
+                Abbrechen
+              </button>
+              <button onClick={saveEditSchicht} disabled={editLoading} style={{ flex:2, padding:'12px', borderRadius:12, border:'none', background:'#0d631b', color:'#fff', fontSize:13, fontWeight:700, cursor: editLoading ? 'not-allowed' : 'pointer', fontFamily:'Lexend,sans-serif', opacity: editLoading ? .7 : 1 }}>
+                {editLoading ? 'Wird gespeichert...' : '✅ Speichern'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
