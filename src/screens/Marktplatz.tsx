@@ -325,9 +325,16 @@ function ShiftItem({ shift, isMine, isFull, onClick }: { shift: Schicht; isMine:
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
         <div>
           <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{shift.bezeichnung}</h3>
-          <span style={{ fontSize:11, color:'#5d5e61', display:'flex', alignItems:'center', gap:3, marginTop:3 }}>
-            <span className="material-symbols-outlined" style={{ fontSize:13 }}>schedule</span>
-            {shift.startzeit?.slice(0,5)} – {shift.endzeit?.slice(0,5)}
+          <span style={{ fontSize:11, color:'#5d5e61', display:'flex', alignItems:'center', gap:6, marginTop:3, flexWrap:'wrap' }}>
+            <span style={{ display:'flex', alignItems:'center', gap:3 }}>
+              <span className="material-symbols-outlined" style={{ fontSize:13 }}>schedule</span>
+              {shift.startzeit?.slice(0,5)} – {shift.endzeit?.slice(0,5)}
+            </span>
+            {(shift as any).kategorien?.name && (
+              <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:700, padding:'1px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
+                {(shift as any).kategorien.name}
+              </span>
+            )}
           </span>
         </div>
         <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
