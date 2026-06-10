@@ -68,13 +68,15 @@ export default function Marktplatz({ profile }: Props) {
       .select('id, punkte_vergeben')
       .eq('schicht_id', s.id)
       .eq('mitglied_id', profile.id)
-      .single()
+      .maybeSingle()
     if (existing) {
       await supabase.from('schichtbelegungen').update({ status: 'Angemeldet' }).eq('id', existing.id)
     } else {
       await supabase.from('schichtbelegungen').insert({ schicht_id: s.id, mitglied_id: profile.id, status: 'Angemeldet' })
     }
-    await supabase.from('schichten').update({ belegt: s.belegt + 1 }).eq('id', s.id)
+    // Belegt-Zähler aus echter DB-Anzahl berechnen – verhindert Inkonsistenz
+    const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', s.id).eq('status', 'Angemeldet')
+    await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', s.id)
     await loadData()
     setSaving(false); setSelected(null); setDankeShift(s); setShowDanke(true); startKonfetti()
   }
@@ -82,7 +84,9 @@ export default function Marktplatz({ profile }: Props) {
   async function leaveShift(s: Schicht) {
     setSaving(true)
     await supabase.from('schichtbelegungen').update({ status: 'abgesagt' }).eq('schicht_id', s.id).eq('mitglied_id', profile.id)
-    await supabase.from('schichten').update({ belegt: Math.max(0, s.belegt - 1) }).eq('id', s.id)
+    // Belegt-Zähler aus echter DB-Anzahl berechnen – verhindert Inkonsistenz
+    const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', s.id).eq('status', 'Angemeldet')
+    await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', s.id)
     await loadData(); setSaving(false); setSelected(null)
   }
 

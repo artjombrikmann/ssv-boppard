@@ -4,7 +4,7 @@ import { Profile, Schichtbelegung } from '../types'
 
 interface Props { profile: Profile; onTabChange: (tab: string) => void }
 
-export default function MeineSchichten({ profile }: Props) {
+export default function MeineSchichten({ profile, onTabChange }: Props) {
   const [bookings, setBookings] = useState<Schichtbelegung[]>([])
   const [tab, setTab]           = useState<'kommend' | 'vergangen'>('kommend')
   const [loading, setLoading]   = useState(true)
@@ -14,27 +14,32 @@ export default function MeineSchichten({ profile }: Props) {
   async function loadData() {
     const { data } = await supabase
       .from('schichtbelegungen')
-      .select('*, schichten(bezeichnung, startzeit, endzeit, punkte, veranstaltungen(name))')
+      .select('*, schichten(bezeichnung, startzeit, endzeit, punkte, belegt, veranstaltungen(name))')
       .eq('mitglied_id', profile.id)
+      .eq('status', 'Angemeldet') // ← Nur aktive Anmeldungen
       .order('created_at', { ascending: false })
     setBookings(data ?? [])
     setLoading(false)
   }
 
   async function abmelden(b: Schichtbelegung) {
-    await supabase.from('schichtbelegungen').delete().eq('id', b.id)
+    // Status auf abgesagt setzen statt löschen
+    await supabase.from('schichtbelegungen').update({ status: 'abgesagt' }).eq('id', b.id)
+    // Belegt-Zähler aus echter DB-Anzahl berechnen
     if (b.schicht_id) {
-      await supabase.from('schichten').update({
-        belegt: Math.max(0, ((b.schichten as any)?.belegt ?? 1) - 1)
-      }).eq('id', b.schicht_id)
+      const { count } = await supabase
+        .from('schichtbelegungen')
+        .select('*', { count: 'exact', head: true })
+        .eq('schicht_id', b.schicht_id)
+        .eq('status', 'Angemeldet')
+      await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', b.schicht_id)
     }
     loadData()
   }
 
-  const kommend  = bookings.filter(b => !b.punkte_vergeben)
+  const kommend   = bookings.filter(b => !b.punkte_vergeben)
   const vergangen = bookings.filter(b => b.punkte_vergeben)
-  const anzeige  = tab === 'kommend' ? kommend : vergangen
-
+  const anzeige   = tab === 'kommend' ? kommend : vergangen
   const gesamtPunkte = vergangen.reduce((sum, b) => sum + (b.schichten?.punkte ?? 0), 0)
 
   return (
@@ -61,14 +66,12 @@ export default function MeineSchichten({ profile }: Props) {
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:4, background:'#eceeec', borderRadius:14, padding:4 }}>
-        <button onClick={() => setTab('kommend')}
-          style={{ flex:1, padding:'8px 0', borderRadius:10, border:'none', background: tab === 'kommend' ? '#fff' : 'transparent', color: tab === 'kommend' ? '#0d631b' : '#5d5e61', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:12, cursor:'pointer', boxShadow: tab === 'kommend' ? '0 1px 4px rgba(0,0,0,.08)' : 'none', transition:'all .15s' }}>
-          Kommend ({kommend.length})
-        </button>
-        <button onClick={() => setTab('vergangen')}
-          style={{ flex:1, padding:'8px 0', borderRadius:10, border:'none', background: tab === 'vergangen' ? '#fff' : 'transparent', color: tab === 'vergangen' ? '#0d631b' : '#5d5e61', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:12, cursor:'pointer', boxShadow: tab === 'vergangen' ? '0 1px 4px rgba(0,0,0,.08)' : 'none', transition:'all .15s' }}>
-          Vergangen ({vergangen.length})
-        </button>
+        {(['kommend', 'vergangen'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ flex:1, padding:'8px 0', borderRadius:10, border:'none', background: tab===t ? '#fff' : 'transparent', color: tab===t ? '#0d631b' : '#5d5e61', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:12, cursor:'pointer', boxShadow: tab===t ? '0 1px 4px rgba(0,0,0,.08)' : 'none', transition:'all .15s' }}>
+            {t === 'kommend' ? `Kommend (${kommend.length})` : `Vergangen (${vergangen.length})`}
+          </button>
+        ))}
       </div>
 
       {/* Liste */}
@@ -83,7 +86,8 @@ export default function MeineSchichten({ profile }: Props) {
             {tab === 'kommend' ? 'Noch keine Schichten gebucht.' : 'Noch keine abgeschlossenen Schichten.'}
           </p>
           {tab === 'kommend' && (
-            <button onClick={() => {}} style={{ marginTop:12, background:'#0d631b', color:'#fff', border:'none', borderRadius:10, padding:'8px 16px', fontSize:12, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>
+            <button onClick={() => onTabChange('marktplatz')}
+              style={{ marginTop:12, background:'#0d631b', color:'#fff', border:'none', borderRadius:10, padding:'8px 16px', fontSize:12, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>
               Zum Marktplatz →
             </button>
           )}
@@ -106,7 +110,6 @@ function SchichtCard({ booking: b, tab, onAbmelden }: { booking: Schichtbelegung
     <div style={{ background:'#fff', borderRadius:16, border: tab === 'kommend' ? '1px solid #e8f5ee' : '1px solid #f3f4f6', overflow:'hidden' }}>
       <div style={{ padding:'14px 16px' }}>
         <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-          {/* Datum-Box */}
           <div style={{ width:48, height:48, background:'#e8f5ee', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', borderBottom:'3px solid #0d631b', flexShrink:0 }}>
             <span className="material-symbols-outlined icon-fill" style={{ fontSize:22, color:'#0d631b' }}>event</span>
           </div>
@@ -126,7 +129,6 @@ function SchichtCard({ booking: b, tab, onAbmelden }: { booking: Schichtbelegung
         </div>
       </div>
 
-      {/* Footer */}
       <div style={{ padding:'10px 16px 14px', borderTop:'1px solid #f9fafb', display:'flex', gap:8 }}>
         {b.punkte_vergeben ? (
           <span style={{ flex:1, textAlign:'center', background:'#e8f5ee', color:'#0d631b', fontSize:11, fontWeight:900, padding:'8px', borderRadius:10, fontFamily:'Lexend,sans-serif' }}>

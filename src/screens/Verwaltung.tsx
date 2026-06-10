@@ -26,7 +26,6 @@ export default function Verwaltung({ profile }: Props) {
   const [newKat,     setNewKat]     = useState('')
   const [saved,      setSaved]      = useState(false)
   const [toast,      setToast]      = useState('')
-  const [expandedEv, setExpandedEv] = useState<number | null>(null)
   const [evStep,        setEvStep]        = useState<1 | 2>(1)
   const [activeEvId,    setActiveEvId]    = useState<number | null>(null)
   const [activeEvName,  setActiveEvName]  = useState('')
@@ -38,8 +37,6 @@ export default function Verwaltung({ profile }: Props) {
   const [userBelegungen, setUserBelegungen] = useState<number[]>([])
   const [loeschenUserId, setLoeschenUserId] = useState<string | null>(null)
   const [testLoading,    setTestLoading]    = useState<string | null>(null)
-
-  // Schicht bearbeiten
   const [editSchicht,    setEditSchicht]    = useState<Schicht | null>(null)
   const [editForm,       setEditForm]       = useState({ bezeichnung:'', kategorie_id:'', startzeit:'', endzeit:'', plaetze:1, punkte:10, beschreibung:'' })
   const [editLoading,    setEditLoading]    = useState(false)
@@ -68,7 +65,8 @@ export default function Verwaltung({ profile }: Props) {
 
   async function loadAll() {
     const [b, m, e, s_data, s, k] = await Promise.all([
-      supabase.from('schichtbelegungen').select('*, profiles(name), schichten(bezeichnung,punkte)'),
+      // FIX 1: Nur aktive Anmeldungen laden
+      supabase.from('schichtbelegungen').select('*, profiles(name), schichten(bezeichnung,punkte)').eq('status', 'Angemeldet'),
       supabase.from('profiles').select('*').order('punkte', { ascending: false }),
       supabase.from('veranstaltungen').select('*').order('datum'),
       supabase.from('schichten').select('*'),
@@ -167,7 +165,7 @@ export default function Verwaltung({ profile }: Props) {
   async function saveEditSchicht() {
     if (!editSchicht) return
     if (!editForm.bezeichnung.trim()) { showToast('❌ Bezeichnung darf nicht leer sein'); return }
-    if (editForm.plaetze < editSchicht.belegt) { showToast(`❌ Plätze können nicht unter ${editSchicht.belegt} (bereits belegt) gesetzt werden`); return }
+    if (editForm.plaetze < editSchicht.belegt) { showToast(`❌ Plätze können nicht unter ${editSchicht.belegt} gesetzt werden`); return }
     setEditLoading(true)
     const { error } = await supabase.from('schichten').update({
       bezeichnung: editForm.bezeichnung.trim(),
@@ -186,7 +184,7 @@ export default function Verwaltung({ profile }: Props) {
   }
 
   async function saveSettings() {
-    await supabase.from('einstellungen').upsert({ id: 1, ...settings, freischaltcode })
+    await supabase.from('einstellungen').upsert({ ...settings, id: 1, freischaltcode })
     setSaved(true); setTimeout(() => setSaved(false), 2000); showToast('✅ Einstellungen gespeichert!')
   }
 
@@ -200,7 +198,7 @@ export default function Verwaltung({ profile }: Props) {
     const { data } = await supabase.from('schichten').select('*, veranstaltungen(name)').order('startzeit')
     setAllSchichten(data ?? [])
     if (userId) {
-      const { data: bk } = await supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', userId)
+      const { data: bk } = await supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', userId).eq('status', 'Angemeldet')
       setUserBelegungen((bk ?? []).map((b: any) => b.schicht_id))
     }
   }
@@ -225,11 +223,14 @@ export default function Verwaltung({ profile }: Props) {
     setTempLoading(false)
   }
 
+  // FIX 2: assignSchicht erhöht belegt korrekt
   async function assignSchicht(user: Profile, schicht: Schicht) {
     const { data: existing } = await supabase.from('schichtbelegungen').select('id').eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
     if (existing && existing.length > 0) { showToast('⚠️ Bereits eingetragen'); return }
     if (schicht.belegt >= schicht.plaetze) { showToast('❌ Schicht ist voll'); return }
     await supabase.from('schichtbelegungen').insert({ schicht_id: schicht.id, mitglied_id: user.id, status: 'Angemeldet' })
+    const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', schicht.id).eq('status', 'Angemeldet')
+    await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', schicht.id)
     showToast(`✅ ${user.display_name || user.name} → ${schicht.bezeichnung}`)
     loadAll(); loadAllSchichten()
   }
@@ -249,10 +250,13 @@ export default function Verwaltung({ profile }: Props) {
     setLoeschenUserId(null)
   }
 
+  // FIX 3: removeAssignment verringert belegt korrekt
   async function removeAssignment(user: Profile, schicht: Schicht) {
     const ok = window.confirm(`${user.display_name || user.name} aus "${schicht.bezeichnung}" austragen?`)
     if (!ok) return
     await supabase.from('schichtbelegungen').delete().eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
+    const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', schicht.id).eq('status', 'Angemeldet')
+    await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', schicht.id)
     showToast('🗑️ Zuweisung entfernt'); loadAll(); loadAllSchichten()
   }
 
@@ -447,11 +451,9 @@ export default function Verwaltung({ profile }: Props) {
                           </div>
                         </div>
                         <div style={{ display:'flex', gap:6, marginLeft:10, flexShrink:0 }}>
-                          {/* Bearbeiten-Button */}
                           <button onClick={() => openEditSchicht(s)} style={{ width:28, height:28, borderRadius:6, border:'none', background:'#e8f5ee', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                             <span className="material-symbols-outlined" style={{ fontSize:14, color:'#0d631b' }}>edit</span>
                           </button>
-                          {/* Löschen-Button */}
                           <button onClick={() => deleteSchicht(s)} style={{ width:28, height:28, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                             <span className="material-symbols-outlined" style={{ fontSize:14, color:'#ef4444' }}>delete</span>
                           </button>
@@ -497,10 +499,9 @@ export default function Verwaltung({ profile }: Props) {
                   <div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{ev.name}</p>
-                      <span style={{ fontSize:9, fontWeight:900, background:'#f3f4f6', color:'#9ca3af', padding:'2px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>Abgeschlossen</span>
+                      <span style={{ fontSize:9, fontWeight:900, background:'#f3f4f6', color:'#9ca3af', padding:'2px 8px', borderRadius:99 }}>Abgeschlossen</span>
                     </div>
                     <p style={{ fontSize:11, color:'#9ca3af', marginTop:2 }}>{new Date(ev.datum).toLocaleDateString('de-DE')} · {ev.ort} · {ev.schichten.length} Schichten</p>
-                    <p style={{ fontSize:11, color:'#9ca3af', marginTop:2 }}>{ev.belegtePlaetze}/{ev.gesamtPlaetze} Plätze · {ev.auslastung}% Auslastung</p>
                   </div>
                   <button onClick={() => deleteVeranstaltung(ev)} style={{ width:32, height:32, borderRadius:8, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                     <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
@@ -528,7 +529,8 @@ export default function Verwaltung({ profile }: Props) {
                   <span className="material-symbols-outlined" style={{ fontSize:16, color:'#0d631b' }}>label</span>
                 </div>
                 <div style={{ flex:1 }}><p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{k.name}</p><p style={{ fontSize:10, color:'#9ca3af' }}>{k.schichten_count ?? 0} Schichten</p></div>
-                <button onClick={() => deleteKategorie(k)} style={{ width:32, height:32, borderRadius:8, border:'none', background: (k.schichten_count ?? 0) > 0 ? '#f3f4f6' : '#fef2f2', cursor: (k.schichten_count ?? 0) > 0 ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity: (k.schichten_count ?? 0) > 0 ? .4 : 1 }} disabled={(k.schichten_count ?? 0) > 0}>
+                <button onClick={() => deleteKategorie(k)} disabled={(k.schichten_count ?? 0) > 0}
+                  style={{ width:32, height:32, borderRadius:8, border:'none', background:(k.schichten_count ?? 0) > 0 ? '#f3f4f6' : '#fef2f2', cursor:(k.schichten_count ?? 0) > 0 ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity:(k.schichten_count ?? 0) > 0 ? .4 : 1 }}>
                   <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
                 </button>
               </div>
@@ -562,7 +564,7 @@ export default function Verwaltung({ profile }: Props) {
             </F>
           </Section>
           <Section title="Freischaltcode">
-            <InfoBox text="Mitglieder brauchen diesen Code bei der Registrierung. Nur Personen mit dem Code können sich anmelden." />
+            <InfoBox text="Mitglieder brauchen diesen Code bei der Registrierung." />
             <div style={{ marginTop:10 }}>
               <F label="Aktueller Code">
                 <input style={inp} type="text" value={freischaltcode} onChange={e => setFreischaltcode(e.target.value)} placeholder="z.B. SSV2026" />
@@ -591,8 +593,12 @@ export default function Verwaltung({ profile }: Props) {
             <input style={{ ...inp, marginBottom:10 }} placeholder="User suchen..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
             {members.filter(m => (m.display_name || m.name || '').toLowerCase().includes(userSearch.toLowerCase())).map(m => {
               const bestaetigt = (m as any).email_bestaetigt ?? true
-              const nameCount = members.filter(x => (x.display_name || x.name) === (m.display_name || m.name)).length
-              const isDuplikat = nameCount > 1
+              // FIX 4: Duplikat nur wenn Name UND E-Mail gleich sind
+              const isDuplikat = members.filter(x =>
+                (x.display_name || x.name) === (m.display_name || m.name) &&
+                x.email === m.email &&
+                x.id !== m.id
+              ).length > 0
               return (
                 <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb', opacity: bestaetigt ? 1 : 0.5 }}>
                   <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -641,7 +647,6 @@ export default function Verwaltung({ profile }: Props) {
         </div>
       )}
 
-      {/* Schicht bearbeiten Modal */}
       {editSchicht && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}
           onClick={() => setEditSchicht(null)}>
@@ -650,9 +655,7 @@ export default function Verwaltung({ profile }: Props) {
             <div style={{ width:40, height:4, background:'#e5e7eb', borderRadius:2, margin:'0 auto 16px' }} />
             <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:18, marginBottom:16 }}>Schicht bearbeiten</p>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <F label="Bezeichnung">
-                <input style={inp} value={editForm.bezeichnung} onChange={e=>setEditForm({...editForm,bezeichnung:e.target.value})} placeholder="z.B. Kasse – Vormittag"/>
-              </F>
+              <F label="Bezeichnung"><input style={inp} value={editForm.bezeichnung} onChange={e=>setEditForm({...editForm,bezeichnung:e.target.value})}/></F>
               <F label="Kategorie">
                 <select style={inp} value={editForm.kategorie_id} onChange={e=>setEditForm({...editForm,kategorie_id:e.target.value})}>
                   <option value="">– keine –</option>
@@ -664,16 +667,10 @@ export default function Verwaltung({ profile }: Props) {
                 <F label="Bis"><input style={inp} type="time" value={editForm.endzeit} onChange={e=>setEditForm({...editForm,endzeit:e.target.value})}/></F>
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                <F label="Plätze">
-                  <input style={inp} type="number" min={editSchicht.belegt || 1} value={editForm.plaetze} onChange={e=>setEditForm({...editForm,plaetze:parseInt(e.target.value)||1})}/>
-                </F>
-                <F label="Punkte">
-                  <input style={inp} type="number" min="1" value={editForm.punkte} onChange={e=>setEditForm({...editForm,punkte:parseInt(e.target.value)||1})}/>
-                </F>
+                <F label="Plätze"><input style={inp} type="number" min={editSchicht.belegt||1} value={editForm.plaetze} onChange={e=>setEditForm({...editForm,plaetze:parseInt(e.target.value)||1})}/></F>
+                <F label="Punkte"><input style={inp} type="number" min="1" value={editForm.punkte} onChange={e=>setEditForm({...editForm,punkte:parseInt(e.target.value)||1})}/></F>
               </div>
-              <F label="Aufgabe (optional)">
-                <input style={inp} value={editForm.beschreibung} onChange={e=>setEditForm({...editForm,beschreibung:e.target.value})} placeholder="Kurze Beschreibung"/>
-              </F>
+              <F label="Aufgabe (optional)"><input style={inp} value={editForm.beschreibung} onChange={e=>setEditForm({...editForm,beschreibung:e.target.value})}/></F>
               {editSchicht.belegt > 0 && (
                 <div style={{ background:'#fff7ed', borderRadius:10, padding:'10px 12px', fontSize:12, color:'#b45309' }}>
                   ⚠️ Diese Schicht hat bereits {editSchicht.belegt} Anmeldung(en). Plätze können nicht unter {editSchicht.belegt} gesetzt werden.
@@ -681,10 +678,8 @@ export default function Verwaltung({ profile }: Props) {
               )}
             </div>
             <div style={{ display:'flex', gap:10, marginTop:20 }}>
-              <button onClick={() => setEditSchicht(null)} style={{ flex:1, padding:'12px', borderRadius:12, border:'1px solid #e5e7eb', background:'none', fontSize:13, cursor:'pointer', color:'#555' }}>
-                Abbrechen
-              </button>
-              <button onClick={saveEditSchicht} disabled={editLoading} style={{ flex:2, padding:'12px', borderRadius:12, border:'none', background:'#0d631b', color:'#fff', fontSize:13, fontWeight:700, cursor: editLoading ? 'not-allowed' : 'pointer', fontFamily:'Lexend,sans-serif', opacity: editLoading ? .7 : 1 }}>
+              <button onClick={() => setEditSchicht(null)} style={{ flex:1, padding:'12px', borderRadius:12, border:'1px solid #e5e7eb', background:'none', fontSize:13, cursor:'pointer', color:'#555' }}>Abbrechen</button>
+              <button onClick={saveEditSchicht} disabled={editLoading} style={{ flex:2, padding:'12px', borderRadius:12, border:'none', background:'#0d631b', color:'#fff', fontSize:13, fontWeight:700, cursor:editLoading?'not-allowed':'pointer', fontFamily:'Lexend,sans-serif', opacity:editLoading?.7:1 }}>
                 {editLoading ? 'Wird gespeichert...' : '✅ Speichern'}
               </button>
             </div>
