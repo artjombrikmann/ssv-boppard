@@ -56,7 +56,7 @@ export default function Marktplatz({ profile }: Props) {
       .eq('schicht_id', s.id)
       .neq('status', 'abgesagt')
     setTeilnehmer((data ?? []).map((b: any) => ({
-      name: b.profiles?.display_name || b.profiles?.name || 'Unbekannt'
+      name: b.profiles?.name || b.profiles?.display_name || 'Unbekannt'
     })))
     setTeilnehmerLoading(false)
   }

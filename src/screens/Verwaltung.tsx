@@ -602,11 +602,11 @@ export default function Verwaltung({ profile }: Props) {
               return (
                 <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb', opacity: bestaetigt ? 1 : 0.5 }}>
                   <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : '#0d631b' }}>{(m.display_name || m.name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}</span>
+                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : '#0d631b' }}>{(m.name || m.display_name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}</span>
                   </div>
                   <div style={{ flex:1 }}>
                     <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
-                      {m.display_name || m.name}
+                      {m.name || m.display_name}
                       {(m as any).is_temp && <span style={{ marginLeft:6, fontSize:9, background:'#e8f0fe', color:'#1a3a7a', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>{(m as any).temp_typ ?? 'TEMP'}</span>}
                       {!bestaetigt && <span style={{ marginLeft:6, fontSize:9, background:'#fef2f2', color:'#ef4444', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>Unbestätigt</span>}
                       {isDuplikat && <span style={{ marginLeft:6, fontSize:9, background:'#fff7ed', color:'#f59e0b', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>⚠️ Duplikat</span>}
