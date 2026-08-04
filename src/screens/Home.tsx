@@ -24,12 +24,13 @@ export default function Home({ profile, onTabChange }: Props) {
 
     const { data: bk } = await supabase
       .from('schichtbelegungen')
-      .select('*, schichten(bezeichnung,startzeit,endzeit,punkte,veranstaltungen(name))')
+      .select('*, schichten(bezeichnung,startzeit,startzeit_ts,endzeit,punkte,veranstaltungen(name))')
       .eq('mitglied_id', profile.id)
       .eq('status', 'Angemeldet')
-      .order('created_at', { ascending: false })
+      .gt('schichten.startzeit_ts', jetzt)
+      .order('created_at', { ascending: true })
       .limit(1)
-    if (bk && bk.length > 0) setNextShift(bk[0].schichten as any)
+    if (bk && bk.length > 0 && bk[0].schichten) setNextShift(bk[0].schichten as any)
 
     const { data: members } = await supabase.from('profiles').select('punkte').order('punkte', { ascending: false })
     if (members) {
