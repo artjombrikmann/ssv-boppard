@@ -12,10 +12,13 @@ export default function Home({ profile, onTabChange }: Props) {
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
+    // Nur zukünftige Schichten laden
+    const jetzt = new Date().toISOString()
     const { data: sh } = await supabase
       .from('schichten')
       .select('*, veranstaltungen(name, datum), kategorien(name)')
-      .order('startzeit')
+      .gt('startzeit_ts', jetzt)
+      .order('startzeit_ts')
 
     setShifts(sh ?? [])
 
@@ -23,6 +26,7 @@ export default function Home({ profile, onTabChange }: Props) {
       .from('schichtbelegungen')
       .select('*, schichten(bezeichnung,startzeit,endzeit,punkte,veranstaltungen(name))')
       .eq('mitglied_id', profile.id)
+      .eq('status', 'Angemeldet')
       .order('created_at', { ascending: false })
       .limit(1)
     if (bk && bk.length > 0) setNextShift(bk[0].schichten as any)
