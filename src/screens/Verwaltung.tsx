@@ -323,11 +323,12 @@ export default function Verwaltung({ profile }: Props) {
 
   async function addPosition() {
     if (!aktiveVorlage) return
-    if (!newPos.bezeichnung.trim()) { showToast('❌ Bitte Bezeichnung eingeben'); return }
+    if (!newPos.kategorie_id) { showToast('❌ Bitte eine Kategorie wählen'); return }
+    const katName = kategorien.find(k => k.id === newPos.kategorie_id)?.name ?? 'Schicht'
     const { error } = await supabase.from('schicht_vorlagen_positionen').insert({
       vorlage_id: aktiveVorlage.id,
-      bezeichnung: newPos.bezeichnung.trim(),
-      kategorie_id: newPos.kategorie_id || null,
+      bezeichnung: katName,
+      kategorie_id: newPos.kategorie_id,
       start_offset: newPos.start_offset,
       end_offset: newPos.end_offset,
       plaetze: newPos.plaetze,
@@ -775,10 +776,9 @@ export default function Verwaltung({ profile }: Props) {
                       {/* Neue Position */}
                       <div style={{ background:'#f0f9ff', borderRadius:10, padding:12, border:'1px solid #bae6fd', marginTop:8 }}>
                         <p style={{ fontSize:10, fontWeight:800, color:'#0369a1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Neue Schicht-Position</p>
-                        <F label="Bezeichnung"><input style={inp} value={newPos.bezeichnung} onChange={e => setNewPos({...newPos, bezeichnung: e.target.value})} placeholder="z.B. Kasse" /></F>
-                        <F label="Kategorie">
+                        <F label="Kategorie (Pflicht)">
                           <select style={inp} value={newPos.kategorie_id} onChange={e => setNewPos({...newPos, kategorie_id: e.target.value})}>
-                            <option value="">– keine –</option>
+                            <option value="">– Kategorie wählen –</option>
                             {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
                           </select>
                         </F>
