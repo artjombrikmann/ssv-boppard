@@ -293,7 +293,7 @@ export default function Verwaltung({ profile }: Props) {
 
   // ── Vorlagen ──
   interface VorlagenPosition { id?: string; bezeichnung: string; kategorie_id: string; start_offset: number; end_offset: number; plaetze: number; punkte: number; beschreibung: string }
-  interface Vorlage { id: string; event_typ: string; name: string; positionen?: VorlagenPosition[] }
+  interface Vorlage { id: string; event_typ: string; name: string; schicht_vorlagen_positionen?: VorlagenPosition[] }
   const [vorlagen,       setVorlagen]       = useState<Vorlage[]>([])
   const [newVorlage,     setNewVorlage]     = useState({ name:'', event_typ:'heimspiel' })
   const [aktiveVorlage,  setAktiveVorlage]  = useState<Vorlage | null>(null)
@@ -306,7 +306,17 @@ export default function Verwaltung({ profile }: Props) {
   const [assistPreview,  setAssistPreview]  = useState<VorlagenPosition[]>([])
 
   async function loadVorlagen() {
-    const { data } = await supabase.from('schicht_vorlagen').select('*, schicht_vorlagen_positionen(*)').order('name')
+    const { data, error } = await supabase
+      .from('schicht_vorlagen')
+      .select(`
+        *,
+        schicht_vorlagen_positionen (
+          id, vorlage_id, bezeichnung, kategorie_id,
+          start_offset, end_offset, plaetze, punkte, beschreibung
+        )
+      `)
+      .order('name')
+    if (error) console.error('loadVorlagen Fehler:', error)
     setVorlagen(data ?? [])
   }
 
@@ -317,7 +327,8 @@ export default function Verwaltung({ profile }: Props) {
     showToast('✅ Vorlage angelegt!')
     setNewVorlage({ name:'', event_typ:'heimspiel' })
     await loadVorlagen()
-    const vorlage = (await supabase.from('schicht_vorlagen').select('*, schicht_vorlagen_positionen(*)').eq('id', data.id).single()).data
+    const vorlageSelect = `*, schicht_vorlagen_positionen ( id, vorlage_id, bezeichnung, kategorie_id, start_offset, end_offset, plaetze, punkte, beschreibung )`
+    const vorlage = (await supabase.from('schicht_vorlagen').select(vorlageSelect).eq('id', data.id).single()).data
     setAktiveVorlage(vorlage)
   }
 
@@ -338,8 +349,11 @@ export default function Verwaltung({ profile }: Props) {
     if (error) { showToast('❌ Fehler: ' + error.message); return }
     showToast('✅ Position hinzugefügt!')
     setNewPos({ bezeichnung:'', kategorie_id:'', start_offset:-60, end_offset:0, plaetze:2, punkte:10, beschreibung:'' })
-    const updated = await supabase.from('schicht_vorlagen').select('*, schicht_vorlagen_positionen(*)').eq('id', aktiveVorlage.id).single()
-    setAktiveVorlage(updated.data)
+    // Kurz warten damit Supabase den Insert verarbeitet hat
+    await new Promise(r => setTimeout(r, 300))
+    const vorlageSelect = `*, schicht_vorlagen_positionen ( id, vorlage_id, bezeichnung, kategorie_id, start_offset, end_offset, plaetze, punkte, beschreibung )`
+    const { data: updated } = await supabase.from('schicht_vorlagen').select(vorlageSelect).eq('id', aktiveVorlage.id).single()
+    if (updated) setAktiveVorlage(updated)
     await loadVorlagen()
   }
 
@@ -596,10 +610,10 @@ export default function Verwaltung({ profile }: Props) {
                         {vorlagen.filter(v => v.event_typ === newEv.kategorie).map(v => (
                           <button key={v.id} onClick={() => {
                             setAssistVorlage(v)
-                            setAssistPreview((v.positionen ?? []) as any)
+                            setAssistPreview((v.schicht_vorlagen_positionen ?? []) as any)
                             setAssistStep(1)
                           }} style={{ ...btnSm, background:'#0d631b', color:'#fff', fontSize:12, textAlign:'left', padding:'8px 12px' }}>
-                            ✦ {v.name} ({(v.positionen as any)?.length ?? 0} Schichten)
+                            ✦ {v.name} ({(v.schicht_vorlagen_positionen as any)?.length ?? 0} Schichten)
                           </button>
                         ))}
                         <button onClick={() => setAssistStep(3)} style={{ ...btnSm, background:'transparent', color:'#0d631b', fontSize:11, textAlign:'left', padding:'4px 0' }}>
@@ -740,7 +754,7 @@ export default function Verwaltung({ profile }: Props) {
                       <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
                         {v.event_typ === 'heimspiel' ? '⚽' : v.event_typ === 'vereinsfest' ? '🎉' : v.event_typ === 'turnier' ? '🏆' : '🏈'} {v.name}
                       </p>
-                      <p style={{ fontSize:11, color:'#9ca3af' }}>{(v.positionen as any)?.length ?? 0} Schicht-Positionen</p>
+                      <p style={{ fontSize:11, color:'#9ca3af' }}>{(v.schicht_vorlagen_positionen as any)?.length ?? 0} Schicht-Positionen</p>
                     </div>
                     <div style={{ display:'flex', gap:6 }}>
                       <button onClick={() => setAktiveVorlage(aktiveVorlage?.id === v.id ? null : v)}
@@ -758,7 +772,7 @@ export default function Verwaltung({ profile }: Props) {
                   {aktiveVorlage?.id === v.id && (
                     <div style={{ marginTop:12, paddingLeft:4 }}>
                       {/* Bestehende Positionen */}
-                      {((aktiveVorlage.positionen ?? []) as any[]).map((pos: any) => (
+                      {((aktiveVorlage.schicht_vorlagen_positionen ?? []) as any[]).map((pos: any) => (
                         <div key={pos.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'#f8faf8', borderRadius:8, border:'1px solid #f3f4f6', marginBottom:6 }}>
                           <div>
                             <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:12 }}>{pos.bezeichnung}</p>
