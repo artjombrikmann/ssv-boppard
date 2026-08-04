@@ -43,11 +43,11 @@ export default function Verwaltung({ profile }: Props) {
 
   useEffect(() => { loadAll() }, [])
 
-  async function testMailSenden(typ: 'reminder' | 'gutschein', adminEmail: string) {
+  async function testMailSenden(typ: 'reminder' | 'gutschein' | 'zuweisung', adminEmail: string) {
     setTestLoading(typ)
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-    const functionName = typ === 'reminder' ? 'schicht-reminder' : 'gutschein-anfrage'
+    const functionName = typ === 'reminder' ? 'schicht-reminder' : typ === 'zuweisung' ? 'schicht-zuweisung' : 'gutschein-anfrage'
     try {
       await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
         method: 'POST',
@@ -65,7 +65,6 @@ export default function Verwaltung({ profile }: Props) {
 
   async function loadAll() {
     const [b, m, e, s_data, s, k] = await Promise.all([
-      // FIX 1: Nur aktive Anmeldungen laden
       supabase.from('schichtbelegungen').select('*, profiles(name), schichten(bezeichnung,punkte)').eq('status', 'Angemeldet'),
       supabase.from('profiles').select('*').order('punkte', { ascending: false }),
       supabase.from('veranstaltungen').select('*').order('datum'),
@@ -223,15 +222,33 @@ export default function Verwaltung({ profile }: Props) {
     setTempLoading(false)
   }
 
-  // FIX 2: assignSchicht erhöht belegt korrekt
   async function assignSchicht(user: Profile, schicht: Schicht) {
     const { data: existing } = await supabase.from('schichtbelegungen').select('id').eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
     if (existing && existing.length > 0) { showToast('⚠️ Bereits eingetragen'); return }
     if (schicht.belegt >= schicht.plaetze) { showToast('❌ Schicht ist voll'); return }
+
     await supabase.from('schichtbelegungen').insert({ schicht_id: schicht.id, mitglied_id: user.id, status: 'Angemeldet' })
     const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', schicht.id).eq('status', 'Angemeldet')
     await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', schicht.id)
-    showToast(`✅ ${user.display_name || user.name} → ${schicht.bezeichnung}`)
+
+    // Zuweisung-Mail senden
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+      await fetch(`${supabaseUrl}/functions/v1/schicht-zuweisung`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${anonKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mitglied_id: user.id,
+          schicht_id: schicht.id,
+          admin_id: profile.id,
+        }),
+      })
+    } catch (err) {
+      console.error('Zuweisung-Mail Fehler:', err)
+    }
+
+    showToast(`✅ ${user.name || user.display_name} → ${schicht.bezeichnung}`)
     loadAll(); loadAllSchichten()
   }
 
@@ -250,7 +267,6 @@ export default function Verwaltung({ profile }: Props) {
     setLoeschenUserId(null)
   }
 
-  // FIX 3: removeAssignment verringert belegt korrekt
   async function removeAssignment(user: Profile, schicht: Schicht) {
     const ok = window.confirm(`${user.display_name || user.name} aus "${schicht.bezeichnung}" austragen?`)
     if (!ok) return
@@ -334,14 +350,18 @@ export default function Verwaltung({ profile }: Props) {
             <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>Mail-Test</p>
             <div style={{ background:'#fff', border:'1px solid #f3f4f6', borderRadius:14, padding:'14px 16px', display:'flex', flexDirection:'column', gap:10 }}>
               <p style={{ fontSize:12, color:'#9ca3af', margin:0 }}>Sendet eine Test-Mail an deine Admin-E-Mail-Adresse.</p>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
                 <button onClick={() => testMailSenden('reminder', profile.email ?? settings.admin_email)} disabled={testLoading !== null}
                   style={{ ...btnSm, background: testLoading === 'reminder' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'reminder' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
-                  {testLoading === 'reminder' ? '⏳ Sende...' : '🔔 Reminder testen'}
+                  {testLoading === 'reminder' ? '⏳' : '🔔 Reminder'}
                 </button>
                 <button onClick={() => testMailSenden('gutschein', profile.email ?? settings.admin_email)} disabled={testLoading !== null}
                   style={{ ...btnSm, background: testLoading === 'gutschein' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'gutschein' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
-                  {testLoading === 'gutschein' ? '⏳ Sende...' : '🎫 Gutschein testen'}
+                  {testLoading === 'gutschein' ? '⏳' : '🎫 Gutschein'}
+                </button>
+                <button onClick={() => testMailSenden('zuweisung', profile.email ?? settings.admin_email)} disabled={testLoading !== null}
+                  style={{ ...btnSm, background: testLoading === 'zuweisung' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'zuweisung' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
+                  {testLoading === 'zuweisung' ? '⏳' : '📋 Zuweisung'}
                 </button>
               </div>
             </div>
@@ -593,7 +613,6 @@ export default function Verwaltung({ profile }: Props) {
             <input style={{ ...inp, marginBottom:10 }} placeholder="User suchen..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
             {members.filter(m => (m.display_name || m.name || '').toLowerCase().includes(userSearch.toLowerCase())).map(m => {
               const bestaetigt = (m as any).email_bestaetigt ?? true
-              // FIX 4: Duplikat nur wenn Name UND E-Mail gleich sind
               const isDuplikat = members.filter(x =>
                 (x.display_name || x.name) === (m.display_name || m.name) &&
                 x.email === m.email &&
@@ -624,7 +643,8 @@ export default function Verwaltung({ profile }: Props) {
             })}
           </Section>
           {selectedUser && (
-            <Section title={`Schichten zuweisen – ${selectedUser.display_name || selectedUser.name}`}>
+            <Section title={`Schichten zuweisen – ${selectedUser.name || selectedUser.display_name}`}>
+              <InfoBox text="Der User bekommt automatisch eine E-Mail wenn du ihn einer Schicht zuweist." />
               {allSchichten.length === 0 ? <Empty text="Keine Schichten vorhanden." /> : allSchichten.map(s => {
                 const voll = s.belegt >= s.plaetze
                 const istZugewiesen = userBelegungen.includes(s.id)
