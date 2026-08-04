@@ -194,8 +194,15 @@ export default function Verwaltung({ profile }: Props) {
   }
 
   async function loadAllSchichten(userId?: string) {
-    const { data } = await supabase.from('schichten').select('*, veranstaltungen(name)').order('startzeit')
-    setAllSchichten(data ?? [])
+    const jetzt = new Date().toISOString()
+    const { data } = await supabase
+      .from('schichten')
+      .select('*, veranstaltungen(name)')
+      .gt('startzeit_ts', jetzt)
+      .order('startzeit_ts')
+    // Nur Schichten anzeigen die noch nicht voll sind
+    const nichtVoll = (data ?? []).filter(s => s.belegt < s.plaetze)
+    setAllSchichten(nichtVoll)
     if (userId) {
       const { data: bk } = await supabase.from('schichtbelegungen').select('schicht_id').eq('mitglied_id', userId).eq('status', 'Angemeldet')
       setUserBelegungen((bk ?? []).map((b: any) => b.schicht_id))
