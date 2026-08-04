@@ -407,7 +407,9 @@ export default function Verwaltung({ profile }: Props) {
   function schichtName(s: Schicht, alleSchichten: Schicht[]): string {
     const katId = s.kategorie_id
     const katName = kategorien.find(k => k.id === katId)?.name ?? s.bezeichnung ?? 'Schicht'
-    const gleiche = alleSchichten.filter(x => x.kategorie_id === katId && x.veranstaltung_id === s.veranstaltung_id)
+    const gleiche = alleSchichten
+      .filter(x => x.kategorie_id === katId && x.veranstaltung_id === s.veranstaltung_id)
+      .sort((a, b) => (a.startzeit ?? '').localeCompare(b.startzeit ?? ''))
     if (gleiche.length <= 1) return katName
     const idx = gleiche.findIndex(x => x.id === s.id)
     return `${katName} ${idx + 1}`

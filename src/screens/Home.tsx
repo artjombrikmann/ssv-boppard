@@ -185,7 +185,9 @@ export default function Home({ profile, onTabChange }: Props) {
 
 function schichtAnzeigename(s: any, alle: any[]): string {
   const katName = s.kategorien?.name ?? 'Schicht'
-  const gleiche = alle.filter(x => x.kategorie_id === s.kategorie_id && x.veranstaltung_id === s.veranstaltung_id)
+  const gleiche = alle
+    .filter(x => x.kategorie_id === s.kategorie_id && x.veranstaltung_id === s.veranstaltung_id)
+    .sort((a, b) => (a.startzeit ?? '').localeCompare(b.startzeit ?? ''))
   if (gleiche.length <= 1) return katName
   const idx = gleiche.findIndex(x => x.id === s.id)
   return `${katName} ${idx + 1}`
