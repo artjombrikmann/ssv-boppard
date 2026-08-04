@@ -116,7 +116,7 @@ export default function Home({ profile, onTabChange }: Props) {
               <p style={{ fontSize:10, fontWeight:900, color:'#0d631b', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:2 }}>
                 {(nextShift as any)?.veranstaltungen?.name}
               </p>
-              <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:15 }}>{nextShift.bezeichnung}</h3>
+              <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:15 }}>{(nextShift as any)?.kategorien?.name ?? nextShift.bezeichnung}</h3>
               <div style={{ display:'flex', gap:12, marginTop:4 }}>
                 <span style={{ fontSize:11, color:'#5d5e61', display:'flex', alignItems:'center', gap:3 }}>
                   <span className="material-symbols-outlined" style={{ fontSize:13 }}>schedule</span>
@@ -165,7 +165,7 @@ export default function Home({ profile, onTabChange }: Props) {
 
                 <div style={{ display:'flex', flexDirection:'column', gap:8, paddingLeft:4 }}>
                   {group.schichten.slice(0, 3).map(sh => (
-                    <ShiftCard key={sh.id} shift={sh} onTabChange={onTabChange} />
+                    <ShiftCard key={sh.id} shift={sh} allShifts={shifts} onTabChange={onTabChange} />
                   ))}
                   {group.schichten.length > 3 && (
                     <button onClick={() => onTabChange('marktplatz')}
@@ -183,7 +183,15 @@ export default function Home({ profile, onTabChange }: Props) {
   )
 }
 
-function ShiftCard({ shift, onTabChange }: { shift: Schicht; onTabChange: (t: string) => void }) {
+function schichtAnzeigename(s: any, alle: any[]): string {
+  const katName = s.kategorien?.name ?? 'Schicht'
+  const gleiche = alle.filter(x => x.kategorie_id === s.kategorie_id && x.veranstaltung_id === s.veranstaltung_id)
+  if (gleiche.length <= 1) return katName
+  const idx = gleiche.findIndex(x => x.id === s.id)
+  return `${katName} ${idx + 1}`
+}
+
+function ShiftCard({ shift, allShifts, onTabChange }: { shift: Schicht; allShifts: Schicht[]; onTabChange: (t: string) => void }) {
   const frei = shift.plaetze - shift.belegt
   return (
     <div style={{ background:'#fff', borderRadius:14, padding:'12px 14px', border:'1px solid #f3f4f6', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
@@ -198,7 +206,7 @@ function ShiftCard({ shift, onTabChange }: { shift: Schicht; onTabChange: (t: st
             </span>
           )}
         </div>
-        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{shift.bezeichnung}</p>
+        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{schichtAnzeigename(shift, allShifts)}</p>
         <div style={{ display:'flex', gap:10, marginTop:3 }}>
           <span style={{ fontSize:11, color:'#5d5e61', display:'flex', alignItems:'center', gap:2 }}>
             <span className="material-symbols-outlined" style={{ fontSize:12 }}>schedule</span>

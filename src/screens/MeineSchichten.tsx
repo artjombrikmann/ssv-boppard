@@ -14,7 +14,7 @@ export default function MeineSchichten({ profile, onTabChange }: Props) {
   async function loadData() {
     const { data } = await supabase
       .from('schichtbelegungen')
-      .select('*, schichten(bezeichnung, startzeit, endzeit, punkte, belegt, veranstaltungen(name))')
+      .select('*, schichten(bezeichnung, startzeit, endzeit, punkte, belegt, veranstaltungen(name), kategorien(name))')
       .eq('mitglied_id', profile.id)
       .eq('status', 'Angemeldet') // ← Nur aktive Anmeldungen
       .order('created_at', { ascending: false })
@@ -115,7 +115,7 @@ function SchichtCard({ booking: b, tab, onAbmelden }: { booking: Schichtbelegung
           </div>
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{b.schichten?.bezeichnung}</h3>
+              <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{b.schichten?.kategorien?.name ?? b.schichten?.bezeichnung ?? 'Schicht'}</h3>
               <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:900, padding:'2px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
                 +{b.schichten?.punkte} Pkt
               </span>

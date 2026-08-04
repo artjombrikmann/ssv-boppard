@@ -22,7 +22,7 @@ export default function Verwaltung({ profile }: Props) {
   const [settings,   setSettings]   = useState<Einstellungen>({ id:1, punkte_kurz:5, punkte_normal:10, punkte_lang:15, punkte_sonder:20, bonus_turnier:3, bonus_fest:2, admin_email:'info@ssv-boppard.de' })
   const [freischaltcode, setFreischaltcode] = useState('')
   const [newEv,      setNewEv]      = useState({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
-  const [newSh,      setNewSh]      = useState({ bezeichnung:'', veranstaltung_id:0, kategorie_id:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' })
+  const [newSh,      setNewSh]      = useState({ veranstaltung_id:0, kategorie_id:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' })
   const [newKat,     setNewKat]     = useState('')
   const [saved,      setSaved]      = useState(false)
   const [toast,      setToast]      = useState('')
@@ -38,7 +38,7 @@ export default function Verwaltung({ profile }: Props) {
   const [loeschenUserId, setLoeschenUserId] = useState<string | null>(null)
   const [testLoading,    setTestLoading]    = useState<string | null>(null)
   const [editSchicht,    setEditSchicht]    = useState<Schicht | null>(null)
-  const [editForm,       setEditForm]       = useState({ bezeichnung:'', kategorie_id:'', startzeit:'', endzeit:'', plaetze:1, punkte:10, beschreibung:'' })
+  const [editForm,       setEditForm]       = useState({ kategorie_id:'', startzeit:'', endzeit:'', plaetze:1, punkte:10, beschreibung:'' })
   const [editLoading,    setEditLoading]    = useState(false)
 
   useEffect(() => { loadAll(); loadVorlagen() }, [])
@@ -113,9 +113,9 @@ export default function Verwaltung({ profile }: Props) {
   }
 
   async function addShift() {
-    if (!newSh.bezeichnung || !newSh.veranstaltung_id) { showToast('❌ Bezeichnung und Veranstaltung pflicht'); return }
+    if (!newSh.kategorie_id || !newSh.veranstaltung_id) { showToast('❌ Kategorie und Veranstaltung sind Pflicht'); return }
     await supabase.from('schichten').insert({ ...newSh, belegt: 0 })
-    setNewSh(prev => ({ ...prev, bezeichnung:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' }))
+    setNewSh(prev => ({ ...prev, kategorie_id:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' }))
     showToast('✅ Schicht angelegt!'); loadAll()
   }
 
@@ -141,7 +141,7 @@ export default function Verwaltung({ profile }: Props) {
   }
 
   async function deleteSchicht(s: Schicht) {
-    const ok = window.confirm(`Schicht "${s.bezeichnung}" wirklich löschen?${s.belegt > 0 ? `\n\n⚠️ ${s.belegt} Mitglied(er) werden abgemeldet.` : ''}`)
+    const ok = window.confirm(`Schicht wirklich löschen?${s.belegt > 0 ? `\n\n⚠️ ${s.belegt} Mitglied(er) werden abgemeldet.` : ''}`)
     if (!ok) return
     const { error } = await supabase.from('schichten').delete().eq('id', s.id)
     if (error) showToast('❌ Fehler: ' + error.message)
@@ -151,7 +151,6 @@ export default function Verwaltung({ profile }: Props) {
   function openEditSchicht(s: Schicht) {
     setEditSchicht(s)
     setEditForm({
-      bezeichnung: s.bezeichnung,
       kategorie_id: s.kategorie_id ?? '',
       startzeit: s.startzeit?.slice(0,5) ?? '',
       endzeit: s.endzeit?.slice(0,5) ?? '',
@@ -163,12 +162,11 @@ export default function Verwaltung({ profile }: Props) {
 
   async function saveEditSchicht() {
     if (!editSchicht) return
-    if (!editForm.bezeichnung.trim()) { showToast('❌ Bezeichnung darf nicht leer sein'); return }
+    if (!editForm.kategorie_id) { showToast('❌ Bitte eine Kategorie wählen'); return }
     if (editForm.plaetze < editSchicht.belegt) { showToast(`❌ Plätze können nicht unter ${editSchicht.belegt} gesetzt werden`); return }
     setEditLoading(true)
     const { error } = await supabase.from('schichten').update({
-      bezeichnung: editForm.bezeichnung.trim(),
-      kategorie_id: editForm.kategorie_id || null,
+      kategorie_id: editForm.kategorie_id,
       startzeit: editForm.startzeit,
       endzeit: editForm.endzeit,
       plaetze: editForm.plaetze,
@@ -255,7 +253,7 @@ export default function Verwaltung({ profile }: Props) {
       console.error('Zuweisung-Mail Fehler:', err)
     }
 
-    showToast(`✅ ${user.name || user.display_name} → ${schicht.bezeichnung}`)
+    showToast(`✅ ${user.name || user.display_name} zugewiesen`)
     loadAll(); loadAllSchichten()
   }
 
@@ -275,7 +273,7 @@ export default function Verwaltung({ profile }: Props) {
   }
 
   async function removeAssignment(user: Profile, schicht: Schicht) {
-    const ok = window.confirm(`${user.display_name || user.name} aus "${schicht.bezeichnung}" austragen?`)
+    const ok = window.confirm(`${user.display_name || user.name} aus dieser Schicht austragen?`)
     if (!ok) return
     await supabase.from('schichtbelegungen').delete().eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
     const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', schicht.id).eq('status', 'Angemeldet')
@@ -405,6 +403,16 @@ export default function Verwaltung({ profile }: Props) {
     setEvStep(2)
   }
 
+  // Berechnet Anzeigename aus Kategorie + Nummer innerhalb des Events
+  function schichtName(s: Schicht, alleSchichten: Schicht[]): string {
+    const katId = s.kategorie_id
+    const katName = kategorien.find(k => k.id === katId)?.name ?? s.bezeichnung ?? 'Schicht'
+    const gleiche = alleSchichten.filter(x => x.kategorie_id === katId && x.veranstaltung_id === s.veranstaltung_id)
+    if (gleiche.length <= 1) return katName
+    const idx = gleiche.findIndex(x => x.id === s.id)
+    return `${katName} ${idx + 1}`
+  }
+
   const activeEv = events.find(e => e.id === activeEvId)
   const gesamtSchichten = events.reduce((sum, ev) => sum + ev.schichten.length, 0)
   const ausstehendePunkte = bookings.filter(b => !b.punkte_vergeben).length
@@ -491,7 +499,7 @@ export default function Verwaltung({ profile }: Props) {
             {bookings.filter(b => !b.punkte_vergeben).length === 0
               ? <Empty text="Alle Punkte vergeben ✅" />
               : bookings.filter(b => !b.punkte_vergeben).map(b => (
-                <Row key={b.id} title={(b.profiles as any)?.name ?? '–'} sub={b.schichten?.bezeichnung ?? '–'}
+                <Row key={b.id} title={(b.profiles as any)?.name ?? '–'} sub={`${b.schichten?.punkte ?? 0} Punkte`}
                   right={
                     b.punkte_vergeben
                       ? <span style={{ fontSize:11, fontWeight:900, color:'#9ca3af', padding:'6px 12px', background:'#f3f4f6', borderRadius:8 }}>✓ Vergeben</span>
@@ -652,7 +660,7 @@ export default function Verwaltung({ profile }: Props) {
                     return (
                       <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
                         <div style={{ flex:1 }}>
-                          <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{s.bezeichnung}</p>
+                          <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{schichtName(s, activeEv?.schichten ?? [])}</p>
                           <p style={{ fontSize:10, color:'#9ca3af' }}>{s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)} · {s.punkte} Pkt</p>
                           <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
                             <div style={{ flex:1, height:4, background:'#f3f4f6', borderRadius:99, overflow:'hidden' }}>
@@ -675,10 +683,9 @@ export default function Verwaltung({ profile }: Props) {
               </Section>
               <Section title="Neue Schicht hinzufügen">
                 <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  <F label="Bezeichnung"><input style={inp} value={newSh.bezeichnung} onChange={e=>setNewSh({...newSh,bezeichnung:e.target.value})} placeholder="z.B. Kasse – Vormittag"/></F>
-                  <F label="Kategorie">
+                  <F label="Kategorie (Pflicht)">
                     <select style={inp} value={newSh.kategorie_id} onChange={e=>setNewSh({...newSh,kategorie_id:e.target.value})}>
-                      <option value="">– keine –</option>
+                      <option value="">– Kategorie wählen –</option>
                       {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
                     </select>
                   </F>
@@ -944,7 +951,7 @@ export default function Verwaltung({ profile }: Props) {
                 return (
                   <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
                     <div>
-                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{s.bezeichnung}{istZugewiesen && <span style={{ marginLeft:6, fontSize:9, background:'#e8f5ee', color:'#0d631b', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>✓ Dabei</span>}</p>
+                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{schichtName(s, allSchichten)}{istZugewiesen && <span style={{ marginLeft:6, fontSize:9, background:'#e8f5ee', color:'#0d631b', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>✓ Dabei</span>}</p>
                       <p style={{ fontSize:10, color:'#9ca3af' }}>{(s as any).veranstaltungen?.name} · {s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)} · {s.belegt}/{s.plaetze} belegt</p>
                     </div>
                     {istZugewiesen ? (
@@ -968,10 +975,9 @@ export default function Verwaltung({ profile }: Props) {
             <div style={{ width:40, height:4, background:'#e5e7eb', borderRadius:2, margin:'0 auto 16px' }} />
             <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:18, marginBottom:16 }}>Schicht bearbeiten</p>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <F label="Bezeichnung"><input style={inp} value={editForm.bezeichnung} onChange={e=>setEditForm({...editForm,bezeichnung:e.target.value})}/></F>
-              <F label="Kategorie">
+              <F label="Kategorie (Pflicht)">
                 <select style={inp} value={editForm.kategorie_id} onChange={e=>setEditForm({...editForm,kategorie_id:e.target.value})}>
-                  <option value="">– keine –</option>
+                  <option value="">– Kategorie wählen –</option>
                   {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
                 </select>
               </F>

@@ -133,7 +133,7 @@ export default function Marktplatz({ profile }: Props) {
   const filtered = schichten
     .filter(s => aktiveEventIds.includes(s.veranstaltung_id))
     .filter(s => filter === null || s.kategorie_id === filter)
-    .filter(s => !search || s.bezeichnung.toLowerCase().includes(search.toLowerCase()))
+    .filter(s => !search || ((s.kategorien?.name ?? s.bezeichnung) || '').toLowerCase().includes(search.toLowerCase()))
 
   const grouped = filtered.reduce((acc, s) => {
     const key = s.veranstaltung_id
@@ -263,7 +263,7 @@ export default function Marktplatz({ profile }: Props) {
           <div style={{ background:'#fff', borderRadius:'20px 20px 0 0', padding:20, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ width:40, height:4, background:'#e5e7eb', borderRadius:2, margin:'0 auto 16px' }} />
-            <h2 style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:18, marginBottom:8 }}>{selected.bezeichnung}</h2>
+            <h2 style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:18, marginBottom:8 }}>{selected.kategorien?.name ?? selected.bezeichnung}</h2>
             <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
               <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:900, padding:'3px 10px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>+{selected.punkte} Pkt</span>
               <span style={{ background:'#f3f4f6', color:'#5d5e61', fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99 }}>{selected.veranstaltungen?.name}</span>
@@ -325,7 +325,7 @@ export default function Marktplatz({ profile }: Props) {
             <div style={{ fontSize:52, marginBottom:8 }}>🎉</div>
             <h2 style={{ fontFamily:'Lexend,sans-serif', fontSize:22, fontWeight:900, color:'#0d631b', marginBottom:6 }}>Danke dir!</h2>
             <p style={{ fontSize:14, color:'#5d5e61', lineHeight:1.5, marginBottom:16 }}>
-              Du hast <strong>{dankeShift?.bezeichnung}</strong> übernommen.<br />Der SSV Boppard freut sich auf dich!
+              Du hast <strong>{dankeShift?.kategorien?.name ?? dankeShift?.bezeichnung}</strong> übernommen.<br />Der SSV Boppard freut sich auf dich!
             </p>
             <div style={{ background:'#e8f5ee', borderRadius:12, padding:'10px 14px', marginBottom:20, fontSize:12, color:'#0d631b', fontWeight:700 }}>
               +{dankeShift?.punkte} Punkte werden nach der Schicht gutgeschrieben
@@ -346,7 +346,7 @@ function ShiftItem({ shift, isMine, isFull, onClick }: { shift: Schicht; isMine:
     <div onClick={onClick} style={{ background:'#f8faf8', borderRadius:14, padding:'12px 14px', cursor:'pointer', border: isMine ? '1.5px solid #0d631b' : '1px solid #f3f4f6' }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
         <div>
-          <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{shift.bezeichnung}</h3>
+          <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{shift.kategorien?.name ?? shift.bezeichnung}</h3>
           <span style={{ fontSize:11, color:'#5d5e61', display:'flex', alignItems:'center', gap:6, marginTop:3, flexWrap:'wrap' }}>
             <span style={{ display:'flex', alignItems:'center', gap:3 }}>
               <span className="material-symbols-outlined" style={{ fontSize:13 }}>schedule</span>
