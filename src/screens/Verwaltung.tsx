@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient'
 import { Profile, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
 
 interface Props { profile: Profile; onTabChange: (tab: string) => void }
-type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv'
+type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv' | 'vorlagen'
 
 interface VeranstaltungMitAuslastung extends Veranstaltung {
   schichten: Schicht[]
@@ -41,7 +41,7 @@ export default function Verwaltung({ profile }: Props) {
   const [editForm,       setEditForm]       = useState({ bezeichnung:'', kategorie_id:'', startzeit:'', endzeit:'', plaetze:1, punkte:10, beschreibung:'' })
   const [editLoading,    setEditLoading]    = useState(false)
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll(); loadVorlagen() }, [])
 
   async function testMailSenden(typ: 'reminder' | 'gutschein' | 'zuweisung', adminEmail: string) {
     setTestLoading(typ)
@@ -286,11 +286,124 @@ export default function Verwaltung({ profile }: Props) {
   const TABS: { id: AdminTab; label: string }[] = [
     { id:'uebersicht', label:'Übersicht' },
     { id:'veranstaltungen', label:'Events' },
+    { id:'vorlagen', label:'Vorlagen' },
     { id:'kategorien', label:'Kategorien' },
     { id:'punkte', label:'Punkte' },
     { id:'mitglieder', label:'User' },
     { id:'archiv', label:'Archiv' },
   ]
+
+  // ── Vorlagen ──
+  interface VorlagenPosition { id?: string; bezeichnung: string; kategorie_id: string; start_offset: number; end_offset: number; plaetze: number; punkte: number; beschreibung: string }
+  interface Vorlage { id: string; event_typ: string; name: string; positionen?: VorlagenPosition[] }
+  const [vorlagen,       setVorlagen]       = useState<Vorlage[]>([])
+  const [newVorlage,     setNewVorlage]     = useState({ name:'', event_typ:'heimspiel' })
+  const [aktiveVorlage,  setAktiveVorlage]  = useState<Vorlage | null>(null)
+  const [newPos,         setNewPos]         = useState<VorlagenPosition>({ bezeichnung:'', kategorie_id:'', start_offset:-60, end_offset:0, plaetze:2, punkte:10, beschreibung:'' })
+  const [vorlagenLoading, setVorlagenLoading] = useState(false)
+
+  // ── Assistent ──
+  const [assistStep,     setAssistStep]     = useState<0|1|2|3>(0)
+  const [assistVorlage,  setAssistVorlage]  = useState<Vorlage | null>(null)
+  const [assistPreview,  setAssistPreview]  = useState<VorlagenPosition[]>([])
+
+  async function loadVorlagen() {
+    const { data } = await supabase.from('schicht_vorlagen').select('*, schicht_vorlagen_positionen(*)').order('name')
+    setVorlagen(data ?? [])
+  }
+
+  async function addVorlage() {
+    if (!newVorlage.name.trim()) { showToast('❌ Bitte Namen eingeben'); return }
+    const { data, error } = await supabase.from('schicht_vorlagen').insert({ name: newVorlage.name.trim(), event_typ: newVorlage.event_typ }).select().single()
+    if (error) { showToast('❌ Fehler: ' + error.message); return }
+    showToast('✅ Vorlage angelegt!')
+    setNewVorlage({ name:'', event_typ:'heimspiel' })
+    await loadVorlagen()
+    const vorlage = (await supabase.from('schicht_vorlagen').select('*, schicht_vorlagen_positionen(*)').eq('id', data.id).single()).data
+    setAktiveVorlage(vorlage)
+  }
+
+  async function addPosition() {
+    if (!aktiveVorlage) return
+    if (!newPos.bezeichnung.trim()) { showToast('❌ Bitte Bezeichnung eingeben'); return }
+    const { error } = await supabase.from('schicht_vorlagen_positionen').insert({
+      vorlage_id: aktiveVorlage.id,
+      bezeichnung: newPos.bezeichnung.trim(),
+      kategorie_id: newPos.kategorie_id || null,
+      start_offset: newPos.start_offset,
+      end_offset: newPos.end_offset,
+      plaetze: newPos.plaetze,
+      punkte: newPos.punkte,
+      beschreibung: newPos.beschreibung || null,
+    })
+    if (error) { showToast('❌ Fehler: ' + error.message); return }
+    showToast('✅ Position hinzugefügt!')
+    setNewPos({ bezeichnung:'', kategorie_id:'', start_offset:-60, end_offset:0, plaetze:2, punkte:10, beschreibung:'' })
+    const updated = await supabase.from('schicht_vorlagen').select('*, schicht_vorlagen_positionen(*)').eq('id', aktiveVorlage.id).single()
+    setAktiveVorlage(updated.data)
+    await loadVorlagen()
+  }
+
+  async function deletePosition(posId: string) {
+    await supabase.from('schicht_vorlagen_positionen').delete().eq('id', posId)
+    const updated = await supabase.from('schicht_vorlagen').select('*, schicht_vorlagen_positionen(*)').eq('id', aktiveVorlage!.id).single()
+    setAktiveVorlage(updated.data)
+    await loadVorlagen()
+  }
+
+  async function deleteVorlage(id: string) {
+    const ok = window.confirm('Vorlage wirklich löschen?')
+    if (!ok) return
+    await supabase.from('schicht_vorlagen').delete().eq('id', id)
+    setAktiveVorlage(null)
+    showToast('🗑️ Vorlage gelöscht')
+    loadVorlagen()
+  }
+
+  function offsetLabel(min: number) {
+    if (min === 0) return 'Event-Start/Ende'
+    const abs = Math.abs(min)
+    const h = Math.floor(abs / 60)
+    const m = abs % 60
+    const label = h > 0 ? `${h}h${m > 0 ? ` ${m}min` : ''}` : `${m} Min`
+    return min < 0 ? `${label} vor Event-Start` : `${label} nach Event-Ende`
+  }
+
+  function berechneUhrzeit(eventStart: string, eventEnde: string, offset: number, isStart: boolean) {
+    const base = new Date(isStart ? eventStart : eventEnde)
+    base.setMinutes(base.getMinutes() + offset)
+    return base.toTimeString().slice(0, 5)
+  }
+
+  async function assistentSchichtenAnlegen() {
+    if (!assistVorlage || !activeEvId || !newEv.datum) return
+    setVorlagenLoading(true)
+    const eventStart = `${newEv.datum}T${newSh.startzeit}:00`
+    const eventEnde = `${newEv.datum}T${newSh.endzeit}:00`
+
+    for (const pos of assistPreview) {
+      const startzeit = berechneUhrzeit(eventStart, eventEnde, pos.start_offset, pos.start_offset <= 0)
+      const endzeit = berechneUhrzeit(eventStart, eventEnde, pos.end_offset, pos.end_offset <= 0)
+      await supabase.from('schichten').insert({
+        bezeichnung: pos.bezeichnung,
+        veranstaltung_id: activeEvId,
+        kategorie_id: pos.kategorie_id || null,
+        startzeit,
+        endzeit,
+        plaetze: pos.plaetze,
+        punkte: pos.punkte,
+        beschreibung: pos.beschreibung || null,
+        belegt: 0,
+      })
+    }
+    showToast(`✅ ${assistPreview.length} Schichten angelegt!`)
+    setAssistStep(0)
+    setAssistVorlage(null)
+    setAssistPreview([])
+    setVorlagenLoading(false)
+    await loadAll()
+    setEvStep(2)
+  }
 
   const activeEv = events.find(e => e.id === activeEvId)
   const gesamtSchichten = events.reduce((sum, ev) => sum + ev.schichten.length, 0)
@@ -460,6 +573,77 @@ export default function Verwaltung({ profile }: Props) {
 
           {evStep === 2 && (
             <>
+              {/* Assistent */}
+              {assistStep === 0 && vorlagen.filter(v => v.event_typ === newEv.kategorie).length > 0 && activeEv?.schichten.length === 0 && (
+                <div style={{ background:'#e8f5ee', borderRadius:16, padding:16, border:'1px solid #c6e6d4' }}>
+                  <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize:20, color:'#0d631b', marginTop:1 }}>auto_awesome</span>
+                    <div style={{ flex:1 }}>
+                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:13, color:'#0d631b', marginBottom:4 }}>Vorlage verwenden?</p>
+                      <p style={{ fontSize:12, color:'#0d631b', marginBottom:10 }}>Es gibt Vorlagen für diesen Event-Typ. Schichten automatisch anlegen lassen?</p>
+                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                        {vorlagen.filter(v => v.event_typ === newEv.kategorie).map(v => (
+                          <button key={v.id} onClick={() => {
+                            setAssistVorlage(v)
+                            setAssistPreview((v.positionen ?? []) as any)
+                            setAssistStep(1)
+                          }} style={{ ...btnSm, background:'#0d631b', color:'#fff', fontSize:12, textAlign:'left', padding:'8px 12px' }}>
+                            ✦ {v.name} ({(v.positionen as any)?.length ?? 0} Schichten)
+                          </button>
+                        ))}
+                        <button onClick={() => setAssistStep(3)} style={{ ...btnSm, background:'transparent', color:'#0d631b', fontSize:11, textAlign:'left', padding:'4px 0' }}>
+                          Nein danke, manuell anlegen →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {assistStep === 1 && assistVorlage && (
+                <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
+                  <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4 }}>Schritt 1 – Event-Zeiten festlegen</p>
+                  <p style={{ fontSize:12, color:'#5d5e61', marginBottom:12 }}>Wann beginnt und endet das Event? Die Schichten werden automatisch berechnet.</p>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+                    <F label="Event-Start"><input style={inp} type="time" value={newSh.startzeit} onChange={e => setNewSh({...newSh, startzeit: e.target.value})} /></F>
+                    <F label="Event-Ende"><input style={inp} type="time" value={newSh.endzeit} onChange={e => setNewSh({...newSh, endzeit: e.target.value})} /></F>
+                  </div>
+                  <button style={btnPrimary} onClick={() => setAssistStep(2)}>Vorschau anzeigen →</button>
+                </div>
+              )}
+
+              {assistStep === 2 && assistVorlage && (
+                <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
+                  <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4 }}>Schritt 2 – Vorschau & Bestätigen</p>
+                  <p style={{ fontSize:12, color:'#5d5e61', marginBottom:12 }}>Diese Schichten werden automatisch angelegt. Du kannst sie danach noch bearbeiten.</p>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
+                    {assistPreview.map((pos, i) => {
+                      const start = berechneUhrzeit(`${newEv.datum}T${newSh.startzeit}:00`, `${newEv.datum}T${newSh.endzeit}:00`, pos.start_offset, pos.start_offset <= 0)
+                      const ende = berechneUhrzeit(`${newEv.datum}T${newSh.startzeit}:00`, `${newEv.datum}T${newSh.endzeit}:00`, pos.end_offset, pos.end_offset <= 0)
+                      return (
+                        <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', background:'#f8faf8', borderRadius:10, border:'1px solid #f3f4f6' }}>
+                          <div>
+                            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{pos.bezeichnung}</p>
+                            <p style={{ fontSize:11, color:'#9ca3af' }}>{start}–{ende} · {pos.plaetze} Plätze · {pos.punkte} Pkt</p>
+                          </div>
+                          <button onClick={() => setAssistPreview(prev => prev.filter((_, j) => j !== i))}
+                            style={{ width:28, height:28, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize:14, color:'#ef4444' }}>delete</span>
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button onClick={() => setAssistStep(1)} style={{ ...btnSm, background:'#f3f4f6', color:'#5d5e61', flex:1, padding:'10px' }}>← Zurück</button>
+                    <button onClick={assistentSchichtenAnlegen} disabled={vorlagenLoading}
+                      style={{ ...btnPrimary, flex:2, opacity: vorlagenLoading ? .7 : 1 }}>
+                      {vorlagenLoading ? 'Wird angelegt...' : `✅ ${assistPreview.length} Schichten anlegen`}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <Section title={`Schichten von ${activeEvName} (${activeEv?.schichten.length ?? 0})`}>
                 {!activeEv || activeEv.schichten.length === 0 ? <Empty text="Noch keine Schichten – lege die erste an!" />
                   : activeEv.schichten.map(s => {
@@ -512,6 +696,108 @@ export default function Verwaltung({ profile }: Props) {
               </Section>
               <button onClick={() => setEvStep(1)} style={{ background:'none', border:'none', color:'#9ca3af', fontSize:12, cursor:'pointer', textAlign:'center', padding:'4px 0' }}>← Zurück zu Veranstaltungen</button>
             </>
+          )}
+        </div>
+      )}
+
+      {tab === 'vorlagen' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <InfoBox text="Erstelle Vorlagen für wiederkehrende Events. Beim Anlegen eines Events werden die Schichten automatisch berechnet." />
+
+          {/* Neue Vorlage */}
+          <Section title="Neue Vorlage erstellen">
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <F label="Name"><input style={inp} value={newVorlage.name} onChange={e => setNewVorlage({...newVorlage, name: e.target.value})} placeholder="z.B. Standard Heimspiel" /></F>
+              <F label="Event-Typ">
+                <select style={inp} value={newVorlage.event_typ} onChange={e => setNewVorlage({...newVorlage, event_typ: e.target.value})}>
+                  <option value="heimspiel">⚽ Heimspiel</option>
+                  <option value="vereinsfest">🎉 Vereinsfest</option>
+                  <option value="turnier">🏆 Turnier</option>
+                  <option value="flag-football">🏈 Flag-Football</option>
+                </select>
+              </F>
+              <button style={btnPrimary} onClick={addVorlage}>Vorlage anlegen →</button>
+            </div>
+          </Section>
+
+          {/* Vorlagen Liste */}
+          {vorlagen.length > 0 && (
+            <Section title={`Vorhandene Vorlagen (${vorlagen.length})`}>
+              {vorlagen.map(v => (
+                <div key={v.id} style={{ padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <div style={{ cursor:'pointer', flex:1 }} onClick={() => setAktiveVorlage(aktiveVorlage?.id === v.id ? null : v)}>
+                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
+                        {v.event_typ === 'heimspiel' ? '⚽' : v.event_typ === 'vereinsfest' ? '🎉' : v.event_typ === 'turnier' ? '🏆' : '🏈'} {v.name}
+                      </p>
+                      <p style={{ fontSize:11, color:'#9ca3af' }}>{(v.positionen as any)?.length ?? 0} Schicht-Positionen</p>
+                    </div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button onClick={() => setAktiveVorlage(aktiveVorlage?.id === v.id ? null : v)}
+                        style={{ ...btnSm, background:'#e8f5ee', color:'#0d631b', fontSize:11 }}>
+                        {aktiveVorlage?.id === v.id ? 'Schließen' : 'Bearbeiten'}
+                      </button>
+                      <button onClick={() => deleteVorlage(v.id)}
+                        style={{ width:32, height:32, borderRadius:8, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Positionen */}
+                  {aktiveVorlage?.id === v.id && (
+                    <div style={{ marginTop:12, paddingLeft:4 }}>
+                      {/* Bestehende Positionen */}
+                      {((aktiveVorlage.positionen ?? []) as any[]).map((pos: any) => (
+                        <div key={pos.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'#f8faf8', borderRadius:8, border:'1px solid #f3f4f6', marginBottom:6 }}>
+                          <div>
+                            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:12 }}>{pos.bezeichnung}</p>
+                            <p style={{ fontSize:10, color:'#9ca3af' }}>
+                              Start: {offsetLabel(pos.start_offset)} · Ende: {offsetLabel(pos.end_offset)} · {pos.plaetze} Pl. · {pos.punkte} Pkt
+                            </p>
+                          </div>
+                          <button onClick={() => deletePosition(pos.id)}
+                            style={{ width:26, height:26, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize:13, color:'#ef4444' }}>delete</span>
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* Neue Position */}
+                      <div style={{ background:'#f0f9ff', borderRadius:10, padding:12, border:'1px solid #bae6fd', marginTop:8 }}>
+                        <p style={{ fontSize:10, fontWeight:800, color:'#0369a1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Neue Schicht-Position</p>
+                        <F label="Bezeichnung"><input style={inp} value={newPos.bezeichnung} onChange={e => setNewPos({...newPos, bezeichnung: e.target.value})} placeholder="z.B. Kasse" /></F>
+                        <F label="Kategorie">
+                          <select style={inp} value={newPos.kategorie_id} onChange={e => setNewPos({...newPos, kategorie_id: e.target.value})}>
+                            <option value="">– keine –</option>
+                            {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+                          </select>
+                        </F>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                          <div>
+                            <F label="Start (Min vom Event-Start)">
+                              <input style={inp} type="number" value={newPos.start_offset} onChange={e => setNewPos({...newPos, start_offset: parseInt(e.target.value)||0})} />
+                            </F>
+                            <p style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>{offsetLabel(newPos.start_offset)}</p>
+                          </div>
+                          <div>
+                            <F label="Ende (Min vom Event-Ende)">
+                              <input style={inp} type="number" value={newPos.end_offset} onChange={e => setNewPos({...newPos, end_offset: parseInt(e.target.value)||0})} />
+                            </F>
+                            <p style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>{offsetLabel(newPos.end_offset)}</p>
+                          </div>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                          <F label="Plätze"><input style={inp} type="number" min="1" value={newPos.plaetze} onChange={e => setNewPos({...newPos, plaetze: parseInt(e.target.value)||1})} /></F>
+                          <F label="Punkte"><input style={inp} type="number" min="1" value={newPos.punkte} onChange={e => setNewPos({...newPos, punkte: parseInt(e.target.value)||1})} /></F>
+                        </div>
+                        <button style={{ ...btnPrimary, marginTop:8 }} onClick={addPosition}>+ Position hinzufügen</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </Section>
           )}
         </div>
       )}
