@@ -10,6 +10,7 @@ import Rangliste from './screens/Rangliste'
 import Shop from './screens/Shop'
 import Verwaltung from './screens/Verwaltung'
 import Profil from './screens/Profil'
+import NotificationToggle from './components/NotificationToggle'
 
 type TabId = 'home' | 'marktplatz' | 'meineschichten' | 'rangliste' | 'shop' | 'verwaltung' | 'profil'
 
@@ -246,6 +247,11 @@ export default function App() {
                         </div>
                       ))
                     )}
+                  </div>
+
+                  {/* Push Notifications Toggle */}
+                  <div style={{ padding:'12px 16px', borderTop:'1px solid #f3f4f6' }}>
+                    <NotificationToggle userId={profile?.id ?? ''} />
                   </div>
                 </div>
               </>
