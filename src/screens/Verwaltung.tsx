@@ -290,7 +290,7 @@ export default function Verwaltung({ profile }: Props) {
   async function loadUserProfil(user: Profile) {
     setProfilUser(user)
     setProfilLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('schichtbelegungen')
       .select(`
         schicht_id,
@@ -302,19 +302,23 @@ export default function Verwaltung({ profile }: Props) {
       `)
       .eq('mitglied_id', user.id)
       .eq('status', 'Angemeldet')
-      .order('created_at', { ascending: false })
 
-    const schichten = (data ?? []).map((b: any) => ({
-      id: b.schichten?.id,
-      startzeit_ts: b.schichten?.startzeit_ts,
-      startzeit: b.schichten?.startzeit,
-      endzeit: b.schichten?.endzeit,
-      punkte: b.schichten?.punkte,
-      kategorie_id: b.schichten?.kategorie_id,
-      veranstaltung_name: b.schichten?.veranstaltungen?.name ?? '–',
-      kategorie_name: b.schichten?.kategorien?.name ?? '–',
-    })).filter((s: any) => s.id)
+    if (error) console.error('loadUserProfil Fehler:', error)
 
+    const schichten = (data ?? [])
+      .map((b: any) => ({
+        id: b.schichten?.id,
+        startzeit_ts: b.schichten?.startzeit_ts ?? b.schichten?.startzeit ?? '',
+        startzeit: b.schichten?.startzeit,
+        endzeit: b.schichten?.endzeit,
+        punkte: b.schichten?.punkte ?? 0,
+        kategorie_id: b.schichten?.kategorie_id,
+        veranstaltung_name: b.schichten?.veranstaltungen?.name ?? '–',
+        kategorie_name: b.schichten?.kategorien?.name ?? '–',
+      }))
+      .filter((s: any) => s.id)
+
+    console.log('Profil Schichten geladen:', schichten.length, schichten)
     setProfilSchichten(schichten)
     setProfilLoading(false)
   }
