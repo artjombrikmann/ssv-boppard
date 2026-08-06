@@ -44,6 +44,7 @@ export default function Verwaltung({ profile }: Props) {
   // ── User Profil Modal ──
   interface UserSchicht {
     id: number
+    status: string
     startzeit_ts: string
     startzeit: string
     endzeit: string
@@ -294,6 +295,7 @@ export default function Verwaltung({ profile }: Props) {
       .from('schichtbelegungen')
       .select(`
         schicht_id,
+        status,
         schichten (
           id, startzeit_ts, startzeit, endzeit, punkte, kategorie_id,
           veranstaltungen (name),
@@ -301,13 +303,16 @@ export default function Verwaltung({ profile }: Props) {
         )
       `)
       .eq('mitglied_id', user.id)
-      .eq('status', 'Angemeldet')
+      .in('status', ['Angemeldet', 'abgesagt'])
 
     if (error) console.error('loadUserProfil Fehler:', error)
+
+    const jetzt = new Date().toISOString()
 
     const schichten = (data ?? [])
       .map((b: any) => ({
         id: b.schichten?.id,
+        status: b.status,
         startzeit_ts: b.schichten?.startzeit_ts ?? b.schichten?.startzeit ?? '',
         startzeit: b.schichten?.startzeit,
         endzeit: b.schichten?.endzeit,
@@ -317,8 +322,16 @@ export default function Verwaltung({ profile }: Props) {
         kategorie_name: b.schichten?.kategorien?.name ?? '–',
       }))
       .filter((s: any) => s.id)
+      // Vergangene abgesagte = durchgeführt (status war Angemeldet, wurde automatisch abgesagt)
+      // Zukünftige Angemeldet = anstehend
+      // Zukünftige abgesagt = ignorieren
+      .filter((s: any) => {
+        if (s.status === 'Angemeldet') return true          // anstehend
+        if (s.status === 'abgesagt' && s.startzeit_ts < jetzt) return true  // vergangen = durchgeführt
+        return false
+      })
 
-    console.log('Profil Schichten geladen:', schichten.length, schichten)
+    console.log('Profil Schichten geladen:', schichten.length)
     setProfilSchichten(schichten)
     setProfilLoading(false)
   }
