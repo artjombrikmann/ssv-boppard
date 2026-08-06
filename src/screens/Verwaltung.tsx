@@ -41,6 +41,21 @@ export default function Verwaltung({ profile }: Props) {
   const [editForm,       setEditForm]       = useState({ kategorie_id:'', startzeit:'', endzeit:'', plaetze:1, punkte:10, beschreibung:'' })
   const [editLoading,    setEditLoading]    = useState(false)
 
+  // ── User Profil Modal ──
+  interface UserSchicht {
+    id: number
+    startzeit_ts: string
+    startzeit: string
+    endzeit: string
+    punkte: number
+    kategorie_id: string
+    veranstaltung_name: string
+    kategorie_name: string
+  }
+  const [profilUser,        setProfilUser]        = useState<Profile | null>(null)
+  const [profilSchichten,   setProfilSchichten]   = useState<UserSchicht[]>([])
+  const [profilLoading,     setProfilLoading]     = useState(false)
+
   useEffect(() => { loadAll(); loadVorlagen() }, [])
 
   async function testMailSenden(typ: 'reminder' | 'gutschein' | 'zuweisung', adminEmail: string) {
@@ -270,6 +285,38 @@ export default function Verwaltung({ profile }: Props) {
     if (data.erfolg) { showToast('🗑️ Account gelöscht'); loadAll() }
     else showToast('❌ Fehler: ' + data.fehler)
     setLoeschenUserId(null)
+  }
+
+  async function loadUserProfil(user: Profile) {
+    setProfilUser(user)
+    setProfilLoading(true)
+    const { data } = await supabase
+      .from('schichtbelegungen')
+      .select(`
+        schicht_id,
+        schichten (
+          id, startzeit_ts, startzeit, endzeit, punkte, kategorie_id,
+          veranstaltungen (name),
+          kategorien (name)
+        )
+      `)
+      .eq('mitglied_id', user.id)
+      .eq('status', 'Angemeldet')
+      .order('created_at', { ascending: false })
+
+    const schichten = (data ?? []).map((b: any) => ({
+      id: b.schichten?.id,
+      startzeit_ts: b.schichten?.startzeit_ts,
+      startzeit: b.schichten?.startzeit,
+      endzeit: b.schichten?.endzeit,
+      punkte: b.schichten?.punkte,
+      kategorie_id: b.schichten?.kategorie_id,
+      veranstaltung_name: b.schichten?.veranstaltungen?.name ?? '–',
+      kategorie_name: b.schichten?.kategorien?.name ?? '–',
+    })).filter((s: any) => s.id)
+
+    setProfilSchichten(schichten)
+    setProfilLoading(false)
   }
 
   async function removeAssignment(user: Profile, schicht: Schicht) {
@@ -949,6 +996,7 @@ export default function Verwaltung({ profile }: Props) {
                     <p style={{ fontSize:10, color:'#9ca3af' }}>{(m as any).is_temp ? 'Kein Login · keine Punkte' : `${m.punkte} Pkt · ${m.email}`}</p>
                   </div>
                   <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={() => loadUserProfil(m)} style={{ ...btnSm, background:'#f3f4f6', color:'#374151', fontSize:11 }}>Profil</button>
                     <button onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }} style={{ ...btnSm, background: selectedUser?.id === m.id ? '#0d631b' : '#e8f5ee', color: selectedUser?.id === m.id ? '#fff' : '#0d631b', fontSize:11 }}>{selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}</button>
                     {!bestaetigt && (
                       <button onClick={() => setLoeschenUserId(m.id)} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Löschen</button>
@@ -980,6 +1028,129 @@ export default function Verwaltung({ profile }: Props) {
               })}
             </Section>
           )}
+        </div>
+      )}
+
+      {/* ── User Profil Modal ── */}
+      {profilUser && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+          onClick={() => setProfilUser(null)}>
+          <div style={{ background:'#fff', borderRadius:'20px 20px 0 0', padding:20, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ width:40, height:4, background:'#e5e7eb', borderRadius:2, margin:'0 auto 16px' }} />
+
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20, paddingBottom:16, borderBottom:'1px solid #f3f4f6' }}>
+              <div style={{ width:44, height:44, borderRadius:'50%', background:'#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:13, color:'#0d631b' }}>
+                  {(profilUser.name || profilUser.display_name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
+                </span>
+              </div>
+              <div style={{ flex:1 }}>
+                <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:16 }}>{profilUser.name || profilUser.display_name}</p>
+                <p style={{ fontSize:11, color:'#9ca3af' }}>{profilUser.email}</p>
+              </div>
+              <button onClick={() => setProfilUser(null)} style={{ border:'none', background:'#f3f4f6', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:11, color:'#555' }}>Schließen</button>
+            </div>
+
+            {profilLoading ? (
+              <p style={{ textAlign:'center', color:'#9ca3af', fontSize:13, padding:'20px 0' }}>Wird geladen...</p>
+            ) : (() => {
+              const jetzt = new Date().toISOString()
+              const vergangen = profilSchichten.filter(s => s.startzeit_ts < jetzt).sort((a,b) => b.startzeit_ts.localeCompare(a.startzeit_ts))
+              const kommend = profilSchichten.filter(s => s.startzeit_ts >= jetzt).sort((a,b) => a.startzeit_ts.localeCompare(b.startzeit_ts))
+              const gesamtPunkte = profilSchichten.reduce((sum, s) => sum + (s.punkte ?? 0), 0)
+
+              // Kategorien-Häufigkeit
+              const katCount: Record<string, number> = {}
+              profilSchichten.forEach(s => {
+                const k = s.kategorie_name
+                katCount[k] = (katCount[k] ?? 0) + 1
+              })
+              const topKat = Object.entries(katCount).sort((a,b) => b[1]-a[1]).slice(0,3)
+
+              return (
+                <>
+                  {/* Stats */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:20 }}>
+                    {[
+                      { val: profilSchichten.length, label:'Schichten gesamt' },
+                      { val: vergangen.length, label:'Durchgeführt' },
+                      { val: `${gesamtPunkte} Pkt`, label:'Punkte gesamt' },
+                    ].map(s => (
+                      <div key={s.label} style={{ background:'#f8faf8', borderRadius:12, padding:'12px 10px', textAlign:'center', border:'1px solid #f3f4f6' }}>
+                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:18, color:'#0d631b' }}>{s.val}</p>
+                        <p style={{ fontSize:10, color:'#9ca3af', fontWeight:700, marginTop:2, textTransform:'uppercase', letterSpacing:'.04em' }}>{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Top Kategorien */}
+                  {topKat.length > 0 && (
+                    <div style={{ marginBottom:20 }}>
+                      <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>Häufigste Kategorien</p>
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                        {topKat.map(([kat, count]) => (
+                          <span key={kat} style={{ background:'#e8f5ee', color:'#0d631b', fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:99 }}>
+                            {kat} · {count}×
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Kommende Schichten */}
+                  {kommend.length > 0 && (
+                    <div style={{ marginBottom:16 }}>
+                      <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>
+                        Anstehend ({kommend.length})
+                      </p>
+                      {kommend.map(s => (
+                        <div key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                          <div style={{ width:8, height:8, borderRadius:'50%', background:'#0d631b', flexShrink:0 }} />
+                          <div style={{ flex:1 }}>
+                            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{s.kategorie_name}</p>
+                            <p style={{ fontSize:11, color:'#9ca3af' }}>
+                              {s.veranstaltung_name} · {new Date(s.startzeit_ts).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' })} · {s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)}
+                            </p>
+                          </div>
+                          <span style={{ fontSize:11, fontWeight:700, color:'#0d631b', background:'#e8f5ee', padding:'2px 8px', borderRadius:99 }}>+{s.punkte} Pkt</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Vergangene Schichten */}
+                  {vergangen.length > 0 && (
+                    <div>
+                      <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>
+                        Durchgeführt ({vergangen.length})
+                      </p>
+                      {vergangen.slice(0, 5).map(s => (
+                        <div key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb', opacity:.75 }}>
+                          <div style={{ width:8, height:8, borderRadius:'50%', background:'#d1d5db', flexShrink:0 }} />
+                          <div style={{ flex:1 }}>
+                            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{s.kategorie_name}</p>
+                            <p style={{ fontSize:11, color:'#9ca3af' }}>
+                              {s.veranstaltung_name} · {new Date(s.startzeit_ts).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' })}
+                            </p>
+                          </div>
+                          <span style={{ fontSize:11, fontWeight:700, color:'#9ca3af', padding:'2px 8px' }}>+{s.punkte} Pkt</span>
+                        </div>
+                      ))}
+                      {vergangen.length > 5 && (
+                        <p style={{ fontSize:11, color:'#9ca3af', textAlign:'center', paddingTop:8 }}>+ {vergangen.length - 5} weitere</p>
+                      )}
+                    </div>
+                  )}
+
+                  {profilSchichten.length === 0 && (
+                    <p style={{ textAlign:'center', color:'#9ca3af', fontSize:13, padding:'20px 0' }}>Noch keine Schichten vorhanden.</p>
+                  )}
+                </>
+              )
+            })()}
+          </div>
         </div>
       )}
 
