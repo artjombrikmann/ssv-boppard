@@ -452,11 +452,22 @@ export default function Verwaltung({ profile }: Props) {
     return base.toTimeString().slice(0, 5)
   }
 
+  // ── FIX: Event-Datum kommt jetzt aus activeEv (bzw. events-Liste), NICHT mehr aus newEv, ──
+  // ── da newEv.datum nach addEvent() wieder auf '' zurückgesetzt wird!                     ──
+  function getAktivesEventDatum(): string | null {
+    const ev = events.find(e => e.id === activeEvId)
+    return ev?.datum ?? null
+  }
+
   async function assistentSchichtenAnlegen() {
-    if (!assistVorlage || !activeEvId || !newEv.datum) return
+    const eventDatum = getAktivesEventDatum()
+    if (!assistVorlage || !activeEvId || !eventDatum) {
+      showToast('❌ Kein gültiges Event-Datum gefunden – bitte Veranstaltung erneut wählen')
+      return
+    }
     setVorlagenLoading(true)
-    const eventStart = `${newEv.datum}T${newSh.startzeit}:00`
-    const eventEnde = `${newEv.datum}T${newSh.endzeit}:00`
+    const eventStart = `${eventDatum}T${newSh.startzeit}:00`
+    const eventEnde = `${eventDatum}T${newSh.endzeit}:00`
 
     for (const pos of assistPreview) {
       const startzeit = berechneUhrzeit(eventStart, eventEnde, pos.start_offset, pos.start_offset <= 0)
@@ -707,8 +718,13 @@ export default function Verwaltung({ profile }: Props) {
                   <p style={{ fontSize:12, color:'#5d5e61', marginBottom:12 }}>Diese Schichten werden automatisch angelegt. Du kannst sie danach noch bearbeiten.</p>
                   <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
                     {assistPreview.map((pos, i) => {
-                      const start = berechneUhrzeit(`${newEv.datum}T${newSh.startzeit}:00`, `${newEv.datum}T${newSh.endzeit}:00`, pos.start_offset, pos.start_offset <= 0)
-                      const ende = berechneUhrzeit(`${newEv.datum}T${newSh.startzeit}:00`, `${newEv.datum}T${newSh.endzeit}:00`, pos.end_offset, pos.end_offset <= 0)
+                      const eventDatum = getAktivesEventDatum()
+                      const start = eventDatum
+                        ? berechneUhrzeit(`${eventDatum}T${newSh.startzeit}:00`, `${eventDatum}T${newSh.endzeit}:00`, pos.start_offset, pos.start_offset <= 0)
+                        : '–'
+                      const ende = eventDatum
+                        ? berechneUhrzeit(`${eventDatum}T${newSh.startzeit}:00`, `${eventDatum}T${newSh.endzeit}:00`, pos.end_offset, pos.end_offset <= 0)
+                        : '–'
                       return (
                         <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', background:'#f8faf8', borderRadius:10, border:'1px solid #f3f4f6' }}>
                           <div>
