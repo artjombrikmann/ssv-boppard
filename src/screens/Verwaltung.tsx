@@ -133,7 +133,8 @@ export default function Verwaltung({ profile }: Props) {
     const eventDatum = getAktivesEventDatum()
     if (!eventDatum) { showToast('❌ Kein Event-Datum gefunden – bitte Veranstaltung erneut wählen'); return }
     const startzeit_ts = `${eventDatum}T${newSh.startzeit}:00`
-    const { error } = await supabase.from('schichten').insert({ ...newSh, belegt: 0, startzeit_ts })
+    const katName = kategorien.find(k => k.id === newSh.kategorie_id)?.name ?? 'Schicht'
+    const { error } = await supabase.from('schichten').insert({ ...newSh, belegt: 0, startzeit_ts, bezeichnung: katName })
     if (error) { showToast('❌ Fehler: ' + error.message); return }
     setNewSh(prev => ({ ...prev, kategorie_id:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' }))
     showToast('✅ Schicht angelegt!'); loadAll()
