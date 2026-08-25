@@ -130,7 +130,11 @@ export default function Verwaltung({ profile }: Props) {
 
   async function addShift() {
     if (!newSh.kategorie_id || !newSh.veranstaltung_id) { showToast('❌ Kategorie und Veranstaltung sind Pflicht'); return }
-    await supabase.from('schichten').insert({ ...newSh, belegt: 0 })
+    const eventDatum = getAktivesEventDatum()
+    if (!eventDatum) { showToast('❌ Kein Event-Datum gefunden – bitte Veranstaltung erneut wählen'); return }
+    const startzeit_ts = `${eventDatum}T${newSh.startzeit}:00`
+    const { error } = await supabase.from('schichten').insert({ ...newSh, belegt: 0, startzeit_ts })
+    if (error) { showToast('❌ Fehler: ' + error.message); return }
     setNewSh(prev => ({ ...prev, kategorie_id:'', startzeit:'09:00', endzeit:'13:00', plaetze:3, punkte:10, beschreibung:'' }))
     showToast('✅ Schicht angelegt!'); loadAll()
   }
