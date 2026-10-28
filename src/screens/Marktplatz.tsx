@@ -74,20 +74,22 @@ export default function Marktplatz({ profile }: Props) {
     } else {
       await supabase.from('schichtbelegungen').insert({ schicht_id: s.id, mitglied_id: profile.id, status: 'Angemeldet' })
     }
-    // Belegt-Zähler aus echter DB-Anzahl berechnen – verhindert Inkonsistenz
-    const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', s.id).eq('status', 'Angemeldet')
-    await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', s.id)
-    await loadData()
+    // belegt zählt der DB-Trigger sync_belegt. Anzeige sofort optimistisch aktualisieren,
+    // danach mit echten Daten abgleichen.
+    setMyBookings(prev => prev.includes(s.id) ? prev : [...prev, s.id])
+    setSchichten(prev => prev.map(x => x.id === s.id ? { ...x, belegt: x.belegt + 1 } : x))
     setSaving(false); setSelected(null); setDankeShift(s); setShowDanke(true); startKonfetti()
+    loadData()
   }
 
   async function leaveShift(s: Schicht) {
     setSaving(true)
     await supabase.from('schichtbelegungen').update({ status: 'abgesagt' }).eq('schicht_id', s.id).eq('mitglied_id', profile.id)
-    // Belegt-Zähler aus echter DB-Anzahl berechnen – verhindert Inkonsistenz
-    const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', s.id).eq('status', 'Angemeldet')
-    await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', s.id)
-    await loadData(); setSaving(false); setSelected(null)
+    // belegt zählt der DB-Trigger sync_belegt. Anzeige sofort optimistisch aktualisieren.
+    setMyBookings(prev => prev.filter(id => id !== s.id))
+    setSchichten(prev => prev.map(x => x.id === s.id ? { ...x, belegt: Math.max(0, x.belegt - 1) } : x))
+    setSaving(false); setSelected(null)
+    loadData()
   }
 
   function closeDanke() { setShowDanke(false); stopKonfetti() }

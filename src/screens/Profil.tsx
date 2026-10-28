@@ -51,6 +51,8 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
   });
   const [redeemType, setRedeemType] = useState<(typeof VOUCHERS)[0] | null>(null);
   const [done, setDone] = useState(false);
+  const [redeeming, setRedeeming] = useState(false);
+  const [redeemError, setRedeemError] = useState("");
 
   const [showEdit, setShowEdit]       = useState(false);
   const [displayName, setDisplayName] = useState(profile.display_name || profile.name?.split(" ")[0] || "");
@@ -76,50 +78,53 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
   }, []);
 
   async function handleRedeem(v: (typeof VOUCHERS)[0]) {
+    if (redeeming) return;
     const req = settings[v.ptsKey] as number;
-    if ((profile.punkte ?? 0) < req) return;
-
-    // FIX Option B: Status direkt auf 'genehmigt' setzen → kein Admin-Schritt nötig
-    await supabase.from("gutschein_anfragen").insert({
-      mitglied_id: profile.id,
-      typ: v.id,
-      punkte: req,
-      status: "genehmigt",
-    });
-
-    // Punkte sofort abziehen
-       await supabase.rpc('punkte_abziehen', { 
-      user_id: profile.id, 
-      amount: req 
-    });
-
-    // Admin per Mail informieren
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      try {
-        await fetch(`${supabaseUrl}/functions/v1/gutschein-anfrage`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            mitglied_id: profile.id,
-            typ: v.id,
-            punkte: req,
-          }),
-        });
-      } catch (err) {
-        console.error("Gutschein-Mail Fehler:", err);
+    setRedeemError("");
+    setRedeeming(true);
+    try {
+      // Aktuelles Guthaben frisch aus der DB (der Client-State kann veraltet sein)
+      const { data: aktuell } = await supabase.from("profiles").select("punkte").eq("id", profile.id).single();
+      const guthaben = aktuell?.punkte ?? 0;
+      if (guthaben < req) {
+        onProfileUpdate({ ...profile, punkte: guthaben });
+        setRedeemError("Nicht genug Punkte.");
+        return;
       }
+
+      // 1. Punkte abziehen. Bei Fehler abbrechen, es wird nichts gespeichert.
+      const { error: abzugError } = await supabase.rpc("punkte_abziehen", {
+        user_id: profile.id,
+        amount: req,
+      });
+      if (abzugError) {
+        console.error("Punkteabzug fehlgeschlagen:", abzugError);
+        setRedeemError("Die Punkte konnten nicht abgezogen werden. Es wurde nichts eingelöst.");
+        return;
+      }
+
+      // 2. Anfrage speichern. Die Admin-Mail verschickt der DB-Trigger trigger_gutschein_mail,
+      //    kein zusätzlicher Function-Aufruf aus dem Frontend (sonst doppelte Mails).
+      const { error: insertError } = await supabase.from("gutschein_anfragen").insert({
+        mitglied_id: profile.id,
+        typ: v.id,
+        punkte: req,
+        status: "genehmigt",
+      });
+      if (insertError) {
+        console.error("Gutschein-Anfrage speichern fehlgeschlagen:", insertError);
+        setRedeemError("Die Punkte wurden abgezogen, aber die Anfrage konnte nicht gespeichert werden. Bitte melde dich beim Admin.");
+      } else {
+        setDone(true);
+        setRedeemType(null);
+      }
+
+      // Punktestand neu laden
+      const { data: neu } = await supabase.from("profiles").select("punkte").eq("id", profile.id).single();
+      if (neu) onProfileUpdate({ ...profile, punkte: neu.punkte ?? 0 });
+    } finally {
+      setRedeeming(false);
     }
-
-    // Profil lokal aktualisieren
-    onProfileUpdate({ ...profile, punkte: (profile.punkte ?? 0) - req });
-
-    setRedeemType(null);
-    setDone(true);
   }
 
   async function saveDisplayName() {
@@ -226,7 +231,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
             <div style={p.voucherPts}>{req} Punkte = {val} € Gutschein</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
               <span style={{ fontSize: 12, opacity: 0.8 }}>Guthaben: <strong>{pts} Punkte</strong></span>
-              <button style={p.voucherBtn} onClick={() => setRedeemType(v)}>Einlösen</button>
+              <button style={p.voucherBtn} onClick={() => { setRedeemError(""); setRedeemType(v); }}>Einlösen</button>
             </div>
           </div>
         );
@@ -277,8 +282,9 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
             <IRow label="Gutscheinwert"    value={`${settings[redeemType.valKey]} €`} />
             <IRow label="Deine Punkte"     value={`${pts} Punkte`} color={pts < (settings[redeemType.ptsKey] as number) ? "#c0392b" : undefined} />
             <div style={{ height: 16 }} />
+            {redeemError && <p style={{ color: "#c0392b", fontSize: 13, marginBottom: 10 }}>{redeemError}</p>}
             {pts >= (settings[redeemType.ptsKey] as number) ? (
-              <button style={p.btnPrimary} onClick={() => handleRedeem(redeemType)}>Gutschein anfordern</button>
+              <button style={p.btnPrimary} onClick={() => handleRedeem(redeemType)} disabled={redeeming}>{redeeming ? "Wird verarbeitet…" : "Gutschein anfordern"}</button>
             ) : (
               <div style={p.notEnough}>
                 Nicht genug Punkte. Dir fehlen noch <strong>{(settings[redeemType.ptsKey] as number) - pts} Punkte</strong>.

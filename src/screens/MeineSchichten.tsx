@@ -23,17 +23,11 @@ export default function MeineSchichten({ profile, onTabChange }: Props) {
   }
 
   async function abmelden(b: Schichtbelegung) {
+    // Anzeige sofort aktualisieren, belegt zählt der DB-Trigger sync_belegt
+    setBookings(prev => prev.filter(x => x.id !== b.id))
     // Status auf abgesagt setzen statt löschen
-    await supabase.from('schichtbelegungen').update({ status: 'abgesagt' }).eq('id', b.id)
-    // Belegt-Zähler aus echter DB-Anzahl berechnen
-    if (b.schicht_id) {
-      const { count } = await supabase
-        .from('schichtbelegungen')
-        .select('*', { count: 'exact', head: true })
-        .eq('schicht_id', b.schicht_id)
-        .eq('status', 'Angemeldet')
-      await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', b.schicht_id)
-    }
+    const { error } = await supabase.from('schichtbelegungen').update({ status: 'abgesagt' }).eq('id', b.id)
+    if (error) console.error('Abmelden fehlgeschlagen:', error)
     loadData()
   }
 

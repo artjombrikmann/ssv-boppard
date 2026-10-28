@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     console.log("Profil:", JSON.stringify(profil), "Error:", JSON.stringify(profilError));
 
     const name = profil?.display_name || profil?.name || "Unbekannt";
-    const gutscheinName = typ === "food" ? "Verzehrgutschein" : "Fanshop-Gutschein";
+    const gutscheinName = gutscheinBezeichnung(typ);
 
     const html = buildHtml({ name, email: profil?.email ?? "–", gutscheinName, punkte, testMode: false });
 
@@ -105,6 +105,31 @@ Deno.serve(async (req) => {
   }
 });
 
+// typ-Werte, die das Frontend schreibt:
+//   Profil.tsx: "food", "shop"
+//   Shop.tsx:   Artikelname, z. B. "5 € Verzehrgutschein", "10 € Fanshop-Gutschein", "Heimtrikot 2025"
+// Unbekannte Werte werden roh angezeigt und geloggt, nie stillschweigend als "Fanshop" ausgegeben.
+const TYP_NAMEN: Record<string, string> = {
+  food: "Verzehrgutschein",
+  shop: "Fanshop-Gutschein",
+};
+
+function gutscheinBezeichnung(typ: unknown): string {
+  const roh = String(typ ?? "").trim();
+  if (!roh) {
+    console.warn("gutschein-anfrage: typ fehlt");
+    return "(unbekannt)";
+  }
+  const name = TYP_NAMEN[roh.toLowerCase()];
+  if (name) return name;
+  console.warn("gutschein-anfrage: unbekannter typ:", roh);
+  return roh;
+}
+
+function esc(v: unknown): string {
+  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function buildHtml({ name, email, gutscheinName, punkte, testMode }: {
   name: string; email: string; gutscheinName: string; punkte: number; testMode: boolean;
 }): string {
@@ -128,10 +153,10 @@ function buildHtml({ name, email, gutscheinName, punkte, testMode }: {
           </p>
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:24px;">
             <tr><td style="padding:20px 24px;">
-              <p style="margin:0 0 12px;font-size:13px;color:#555;"><strong style="color:#1a1a1a;">Mitglied:</strong> ${name}</p>
-              <p style="margin:0 0 12px;font-size:13px;color:#555;"><strong style="color:#1a1a1a;">E-Mail:</strong> ${email}</p>
-              <p style="margin:0 0 12px;font-size:13px;color:#555;"><strong style="color:#1a1a1a;">Gutschein:</strong> ${gutscheinName}</p>
-              <p style="margin:0;font-size:13px;color:#555;"><strong style="color:#1a1a1a;">Punkte:</strong> ${punkte} Punkte</p>
+              <p style="margin:0 0 12px;font-size:13px;color:#555;"><strong style="color:#1a1a1a;">Mitglied:</strong> ${esc(name)}</p>
+              <p style="margin:0 0 12px;font-size:13px;color:#555;"><strong style="color:#1a1a1a;">E-Mail:</strong> ${esc(email)}</p>
+              <p style="margin:0 0 12px;font-size:13px;color:#555;"><strong style="color:#1a1a1a;">Gutschein:</strong> ${esc(gutscheinName)}</p>
+              <p style="margin:0;font-size:13px;color:#555;"><strong style="color:#1a1a1a;">Punkte:</strong> ${esc(punkte)} Punkte</p>
             </td></tr>
           </table>
         </td></tr>

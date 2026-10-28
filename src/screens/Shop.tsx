@@ -27,6 +27,7 @@ export default function Shop({ profile }: Props) {
   const [success,   setSuccess]   = useState(false)
   const [punkte,    setPunkte]    = useState(profile.punkte ?? 0)
   const [settings,  setSettings]  = useState<Einstellungen | null>(null)
+  const [fehler,    setFehler]    = useState('')
 
   useEffect(() => {
     supabase.from('einstellungen').select('*').single().then(({ data }) => { if (data) setSettings(data) })
@@ -36,36 +37,59 @@ export default function Shop({ profile }: Props) {
     })
   }, [])
 
+  async function ladePunkte() {
+    const { data } = await supabase.from('profiles').select('punkte').eq('id', profile.id).single()
+    if (data) setPunkte(data.punkte ?? 0)
+  }
+
   async function einloesen(artikel: Artikel) {
+    if (sending) return
+    setFehler('')
     if (punkte < artikel.punkte) return
     setSending(true)
 
-    // 1. Punkte abziehen
-    const neuePunkte = punkte - artikel.punkte
-    await supabase.from('profiles').update({ punkte: neuePunkte }).eq('id', profile.id)
+    try {
+      // 1. Punkte abziehen (die RPC prüft das Guthaben nicht, daher vorher frisch aus der DB laden)
+      const { data: aktuell } = await supabase.from('profiles').select('punkte').eq('id', profile.id).single()
+      const guthaben = aktuell?.punkte ?? 0
+      if (guthaben < artikel.punkte) {
+        setPunkte(guthaben)
+        setFehler('Nicht genug Punkte.')
+        return
+      }
 
-    // 2. Anfrage in DB speichern
-    await supabase.from('gutschein_anfragen').insert({
-      mitglied_id: profile.id,
-      typ: artikel.name,
-      punkte: artikel.punkte,
-      status: 'offen',
-    })
+      const { error: abzugError } = await supabase.rpc('punkte_abziehen', {
+        user_id: profile.id,
+        amount: artikel.punkte,
+      })
+      if (abzugError) {
+        console.error('Punkteabzug fehlgeschlagen:', abzugError)
+        setFehler('Die Punkte konnten nicht abgezogen werden. Es wurde nichts eingelöst.')
+        return
+      }
 
-    // 3. E-Mail via Supabase Edge Function (falls eingerichtet)
-    // await supabase.functions.invoke('send-email', {
-    //   body: {
-    //     to: ADMIN_MAIL,
-    //     subject: `Einlösungsanfrage: ${artikel.name}`,
-    //     text: `${profile.name} (${profile.email}) möchte einlösen:\n\n${artikel.name}\nKosten: ${artikel.punkte} Punkte\n\nBitte bearbeite die Anfrage im Admin-Bereich.`
-    //   }
-    // })
+      // 2. Erst nach erfolgreichem Abzug die Anfrage speichern
+      //    (der DB-Trigger trigger_gutschein_mail verschickt die Mail an den Admin)
+      const { error: insertError } = await supabase.from('gutschein_anfragen').insert({
+        mitglied_id: profile.id,
+        typ: artikel.name,
+        punkte: artikel.punkte,
+        status: 'offen',
+      })
+      if (insertError) {
+        console.error('Anfrage speichern fehlgeschlagen:', insertError)
+        setFehler('Die Punkte wurden abgezogen, aber die Anfrage konnte nicht gespeichert werden. Bitte melde dich bei der Geschäftsführung.')
+        await ladePunkte()
+        return
+      }
 
-    setPunkte(neuePunkte)
-    setSelected(null)
-    setSuccess(true)
-    setSending(false)
-    setTimeout(() => setSuccess(false), 4000)
+      await ladePunkte()
+      setSelected(null)
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 4000)
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -85,6 +109,10 @@ export default function Shop({ profile }: Props) {
             <p style={{ fontSize:11, color:'#5d5e61', marginTop:2 }}>Die Punkte wurden abgezogen. Die Geschäftsführung wurde per E-Mail benachrichtigt.</p>
           </div>
         </div>
+      )}
+
+      {fehler && (
+        <div style={{ background:'#fef2f2', borderRadius:14, padding:'12px 16px', fontSize:13, color:'#ef4444', fontWeight:600 }}>{fehler}</div>
       )}
 
       {/* Info */}
