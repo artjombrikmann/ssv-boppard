@@ -1,16 +1,11 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdmin, requireCron, serviceClient, authFehlerResponse } from "../_shared/auth.ts";
+import { corsHeaders as corsFuer } from "../_shared/cors.ts";
+import { esc, istGastOderFake } from "../_shared/util.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const FROM_EMAIL = "noreply@schichtmeisterapp.de";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
-};
+const supabase = serviceClient();
 
 function datumFormatieren(isoString: string): string {
   const d = new Date(isoString);
@@ -90,7 +85,7 @@ function mailHtml(params: {
         <tr><td style="background:${testMode ? '#b45309' : '#1a472a'};padding:28px 32px;text-align:center;">${logoHtml}${testMode ? '<p style="color:#fff;font-size:12px;margin:8px 0 0;opacity:.8;">🧪 TEST-MAIL</p>' : ''}</td></tr>
         <tr><td style="padding:32px 32px 24px;">
           ${testMode ? '<p style="background:#fff7ed;border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;font-size:13px;color:#b45309;margin:0 0 20px;">Dies ist eine Test-Mail. Es wurden keine Daten verändert.</p>' : ''}
-          <p style="margin:0 0 8px;font-size:15px;color:#555;">Hallo ${vorname},</p>
+          <p style="margin:0 0 8px;font-size:15px;color:#555;">Hallo ${esc(vorname)},</p>
           <p style="margin:0 0 24px;font-size:15px;color:#333;line-height:1.6;">
             du hast dich für eine Schicht angemeldet${tageVorher === 2 ? " — die findet <strong>übermorgen</strong> statt" : " — nur noch <strong>5 Tage</strong>"}.
             Hier nochmal alle Details:
@@ -98,9 +93,9 @@ function mailHtml(params: {
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:24px;">
             <tr><td style="padding:20px 24px;">
               <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Veranstaltung</p>
-              <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#1a1a1a;">${eventname}</p>
+              <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#1a1a1a;">${esc(eventname)}</p>
               <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Schicht</p>
-              <p style="margin:0 0 16px;font-size:15px;color:#333;">${schichtname}</p>
+              <p style="margin:0 0 16px;font-size:15px;color:#333;">${esc(schichtname)}</p>
               <table cellpadding="0" cellspacing="0"><tr>
                 <td style="padding-right:32px;">
                   <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Datum</p>
@@ -154,7 +149,7 @@ async function reminderVersenden(tageVorher: number): Promise<number> {
         status,
         reminder_5_gesendet,
         reminder_2_gesendet,
-        mitglied:profiles(id, display_name, name, email)
+        mitglied:profiles(id, display_name, name, email, is_temp)
       )
     `)
     .gte("startzeit_ts", von)
@@ -189,7 +184,8 @@ async function reminderVersenden(tageVorher: number): Promise<number> {
       }
 
       const mitglied = belegung.mitglied;
-      if (!mitglied?.email) continue;
+      // Gäste und Fake-Adressen (@...intern) überspringen
+      if (istGastOderFake(mitglied)) continue;
 
       const vorname = mitglied.display_name || (mitglied.name ? mitglied.name.split(" ")[0] : "Hallo");
 
@@ -258,6 +254,7 @@ async function testReminderSenden(testEmail: string): Promise<void> {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = corsFuer(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
   }
@@ -276,12 +273,16 @@ Deno.serve(async (req) => {
       }
     } catch (_) { /* kein Body = normaler Cron-Aufruf */ }
 
+    // Testmodus nur für Admins (User-JWT), normaler Lauf nur mit Cron-Secret
     if (testMode) {
+      await requireAdmin(req)
       await testReminderSenden(testEmail)
       return new Response(JSON.stringify({ erfolg: true, test: true, gesendet_an: testEmail }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
       })
     }
+
+    requireCron(req)
 
     const [count5, count2] = await Promise.all([reminderVersenden(5), reminderVersenden(2)]);
     const ergebnis = {
@@ -297,6 +298,8 @@ Deno.serve(async (req) => {
       status: 200,
     });
   } catch (err) {
+    const authAntwort = authFehlerResponse(err, corsHeaders);
+    if (authAntwort) return authAntwort;
     console.error("Unerwarteter Fehler:", err);
     return new Response(JSON.stringify({ erfolg: false, fehler: String(err) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

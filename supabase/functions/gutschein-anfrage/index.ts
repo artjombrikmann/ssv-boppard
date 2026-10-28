@@ -1,15 +1,16 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdmin, serviceClient, authFehlerResponse } from "../_shared/auth.ts";
+import { corsHeaders as corsFuer } from "../_shared/cors.ts";
+import { esc } from "../_shared/util.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const FROM_EMAIL = "noreply@schichtmeisterapp.de";
 
+// Aufruf durch den DB-Trigger notify_gutschein_anfrage (sendet { gutschein_id }).
+// Die Function vertraut nie Daten aus dem Body: Sie lädt die Anfrage per ID aus der DB
+// und sendet nur, wenn mail_gesendet = false. Dadurch ist sie idempotent und nicht
+// zum Spammen missbrauchbar. Der Testmodus ist nur für Admins (User-JWT).
 Deno.serve(async (req) => {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, content-type",
-  };
+  const corsHeaders = corsFuer(req);
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -17,14 +18,13 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    console.log("Body empfangen:", JSON.stringify(body));
+    const { gutschein_id, test_mode, test_email } = body;
 
-    const { mitglied_id, typ, punkte, test_mode, test_email } = body;
+    const supabase = serviceClient();
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-
-    // TEST-MODUS: Fiktive Daten, Mail geht an test_email
+    // TEST-MODUS: Fiktive Daten, Mail geht an test_email (nur Admins)
     if (test_mode && test_email) {
+      await requireAdmin(req);
       console.log("Test-Modus aktiv, sende an:", test_email);
       const html = buildHtml({
         name: "Max Mustermann (TEST)",
@@ -50,7 +50,45 @@ Deno.serve(async (req) => {
       });
     }
 
-    // NORMALER MODUS
+    // NORMALER MODUS: Anfrage per ID laden, nie Daten aus dem Body verwenden
+    if (gutschein_id === undefined || gutschein_id === null || gutschein_id === "") {
+      return new Response(
+        JSON.stringify({ fehler: "gutschein_id fehlt" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Anfrage "beanspruchen": nur wer mail_gesendet von false auf true setzt, sendet die Mail.
+    const { data: anfrage, error: claimError } = await supabase
+      .from("gutschein_anfragen")
+      .update({ mail_gesendet: true })
+      .eq("id", gutschein_id)
+      .eq("mail_gesendet", false)
+      .select("id, mitglied_id, typ, punkte")
+      .maybeSingle();
+
+    if (claimError) {
+      console.error("Claim-Fehler:", claimError.message);
+      return new Response(
+        JSON.stringify({ fehler: "Anfrage konnte nicht geladen werden" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!anfrage) {
+      // Unbekannte ID oder Mail schon gesendet
+      return new Response(
+        JSON.stringify({ erfolg: true, uebersprungen: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const freigeben = async () => {
+      const { error } = await supabase.from("gutschein_anfragen").update({ mail_gesendet: false }).eq("id", anfrage.id);
+      if (error) console.error("mail_gesendet-Reset fehlgeschlagen:", error.message);
+    };
+
+    const { mitglied_id, typ, punkte } = anfrage;
+
     const { data: settings, error: settingsError } = await supabase
       .from("einstellungen")
       .select("admin_email")
@@ -60,6 +98,7 @@ Deno.serve(async (req) => {
 
     const adminEmail = settings?.admin_email;
     if (!adminEmail) {
+      await freigeben();
       return new Response(
         JSON.stringify({ fehler: "Keine Admin-Email" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -93,11 +132,20 @@ Deno.serve(async (req) => {
     const resendText = await resendRes.text();
     console.log("Resend:", resendText);
 
+    if (!resendRes.ok) {
+      await freigeben();
+      return new Response(JSON.stringify({ fehler: "Mailversand fehlgeschlagen" }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ erfolg: true }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (err) {
+    const authAntwort = authFehlerResponse(err, corsHeaders);
+    if (authAntwort) return authAntwort;
     console.error("Fehler:", String(err));
     return new Response(JSON.stringify({ fehler: String(err) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -124,10 +172,6 @@ function gutscheinBezeichnung(typ: unknown): string {
   if (name) return name;
   console.warn("gutschein-anfrage: unbekannter typ:", roh);
   return roh;
-}
-
-function esc(v: unknown): string {
-  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function buildHtml({ name, email, gutscheinName, punkte, testMode }: {
