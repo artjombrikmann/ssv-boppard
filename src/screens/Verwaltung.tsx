@@ -62,14 +62,17 @@ export default function Verwaltung({ profile }: Props) {
   async function testMailSenden(typ: 'reminder' | 'gutschein' | 'zuweisung', adminEmail: string) {
     setTestLoading(typ)
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
     const functionName = typ === 'reminder' ? 'schicht-reminder' : typ === 'zuweisung' ? 'schicht-zuweisung' : 'gutschein-anfrage'
     try {
-      await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
+      // User-JWT statt Anon-Key: die Functions prüfen, dass der Aufrufer Admin ist
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Keine Session')
+      const res = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${anonKey}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ test_mode: true, test_email: adminEmail }),
       })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       showToast(`✅ Test-Mail gesendet an ${adminEmail}`)
     } catch (err) {
       showToast('❌ Fehler: ' + String(err))
@@ -257,17 +260,17 @@ export default function Verwaltung({ profile }: Props) {
     const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', schicht.id).eq('status', 'Angemeldet')
     await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', schicht.id)
 
-    // Zuweisung-Mail senden
+    // Zuweisung-Mail senden (Admin kommt aus dem JWT, nicht aus dem Body)
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Keine Session')
       await fetch(`${supabaseUrl}/functions/v1/schicht-zuweisung`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${anonKey}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mitglied_id: user.id,
           schicht_id: schicht.id,
-          admin_id: profile.id,
         }),
       })
     } catch (err) {

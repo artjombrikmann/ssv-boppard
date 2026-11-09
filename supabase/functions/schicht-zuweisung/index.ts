@@ -1,16 +1,9 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdmin, authFehlerResponse } from "../_shared/auth.ts";
+import { corsHeaders as corsFuer } from "../_shared/cors.ts";
+import { esc, istGastOderFake } from "../_shared/util.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const FROM_EMAIL = "noreply@schichtmeisterapp.de";
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
-};
 
 function datumFormatieren(isoString: string): string {
   const d = new Date(isoString);
@@ -46,7 +39,7 @@ function mailHtml(params: {
   } = params;
 
   const logoHtml = vereinslogo
-    ? `<img src="${vereinslogo}" alt="${vereinsname} Logo" style="max-height:64px;max-width:160px;object-fit:contain;margin-bottom:8px;" />`
+    ? `<img src="${vereinslogo}" alt="${esc(vereinsname)} Logo" style="max-height:64px;max-width:160px;object-fit:contain;margin-bottom:8px;" />`
     : `<span style="font-size:20px;font-weight:600;color:#ffffff;">${vereinsname}</span>`;
 
   return `<!DOCTYPE html>
@@ -67,9 +60,9 @@ function mailHtml(params: {
         <tr><td style="padding:32px 32px 24px;">
           ${testMode ? '<p style="background:#fff7ed;border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;font-size:13px;color:#b45309;margin:0 0 20px;">Dies ist eine Test-Mail. Es wurden keine Daten verändert.</p>' : ''}
 
-          <p style="margin:0 0 8px;font-size:15px;color:#555;">Hallo ${vorname},</p>
+          <p style="margin:0 0 8px;font-size:15px;color:#555;">Hallo ${esc(vorname)},</p>
           <p style="margin:0 0 24px;font-size:15px;color:#333;line-height:1.6;">
-            du wurdest von <strong>${adminName}</strong> einer Schicht zugewiesen.
+            du wurdest von <strong>${esc(adminName)}</strong> einer Schicht zugewiesen.
             Hier sind alle Details:
           </p>
 
@@ -77,10 +70,10 @@ function mailHtml(params: {
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:24px;">
             <tr><td style="padding:20px 24px;">
               <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Veranstaltung</p>
-              <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#1a1a1a;">${eventname}</p>
+              <p style="margin:0 0 16px;font-size:17px;font-weight:600;color:#1a1a1a;">${esc(eventname)}</p>
 
               <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Schicht</p>
-              <p style="margin:0 0 16px;font-size:15px;color:#333;">${schichtname}</p>
+              <p style="margin:0 0 16px;font-size:15px;color:#333;">${esc(schichtname)}</p>
 
               <table cellpadding="0" cellspacing="0"><tr>
                 <td style="padding-right:32px;">
@@ -103,7 +96,7 @@ function mailHtml(params: {
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#e8f5ee;border-radius:8px;border:1px solid #c6e6d4;margin-bottom:24px;">
             <tr><td style="padding:16px 20px;">
               <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#1a472a;text-transform:uppercase;">Zugewiesen von</p>
-              <p style="margin:0;font-size:15px;font-weight:600;color:#1a472a;">${adminName}</p>
+              <p style="margin:0;font-size:15px;font-weight:600;color:#1a472a;">${esc(adminName)}</p>
             </td></tr>
           </table>
 
@@ -143,14 +136,17 @@ async function mailSenden(params: { an: string; betreff: string; html: string })
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = corsFuer(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
+    // Nur Admins. Die Admin-ID kommt aus dem JWT, nie aus dem Body.
+    const { user, supabase } = await requireAdmin(req);
     const body = await req.json();
 
-    // TEST-MODUS
+    // TEST-MODUS (nur für Admins, siehe requireAdmin oben)
     if (body?.test_mode && body?.test_email) {
       const html = mailHtml({
         vorname: "Mitglied",
@@ -188,10 +184,11 @@ Deno.serve(async (req) => {
     }
 
     // PFLICHTFELDER prüfen
-    const { mitglied_id, schicht_id, admin_id } = body;
-    if (!mitglied_id || !schicht_id || !admin_id) {
+    const { mitglied_id, schicht_id } = body;
+    const admin_id = user.id;
+    if (!mitglied_id || !schicht_id) {
       return new Response(
-        JSON.stringify({ erfolg: false, fehler: "mitglied_id, schicht_id und admin_id sind Pflichtfelder." }),
+        JSON.stringify({ erfolg: false, fehler: "mitglied_id und schicht_id sind Pflichtfelder." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
@@ -199,7 +196,7 @@ Deno.serve(async (req) => {
     // Mitglied laden
     const { data: mitglied, error: mitgliedError } = await supabase
       .from("profiles")
-      .select("id, display_name, name, email")
+      .select("id, display_name, name, email, is_temp")
       .eq("id", mitglied_id)
       .single();
 
@@ -210,10 +207,18 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Gäste (Temp-User) haben keine echte Mailadresse
+    if (istGastOderFake(mitglied)) {
+      return new Response(
+        JSON.stringify({ erfolg: true, uebersprungen: "gast" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+
     // Schicht + Veranstaltung laden
     const { data: schicht, error: schichtError } = await supabase
       .from("schichten")
-      .select("id, bezeichnung, startzeit_ts, endzeit, veranstaltungen(name)")
+      .select("id, bezeichnung, startzeit_ts, endzeit_ts, veranstaltungen(name)")
       .eq("id", schicht_id)
       .single();
 
@@ -249,7 +254,7 @@ Deno.serve(async (req) => {
       eventname,
       schichtname: schicht.bezeichnung,
       startzeit: uhrzeitFormatieren(schicht.startzeit_ts),
-      endzeit: uhrzeitFormatieren(schicht.endzeit),
+      endzeit: schicht.endzeit_ts ? uhrzeitFormatieren(schicht.endzeit_ts) : "–",
       datum: datumFormatieren(schicht.startzeit_ts),
       adminName,
     });
@@ -266,6 +271,8 @@ Deno.serve(async (req) => {
     );
 
   } catch (err) {
+    const authAntwort = authFehlerResponse(err, corsHeaders);
+    if (authAntwort) return authAntwort;
     console.error("Unerwarteter Fehler:", err);
     return new Response(
       JSON.stringify({ erfolg: false, fehler: String(err) }),

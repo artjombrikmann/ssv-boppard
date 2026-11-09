@@ -1,19 +1,25 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireCron, serviceClient, authFehlerResponse } from "../_shared/auth.ts";
+import { heuteBerlin } from "../_shared/util.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabase = serviceClient();
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const jsonHeaders = { "Content-Type": "application/json" };
 
-Deno.serve(async (_req) => {
+// Nur per Cron (Header x-cron-secret) aufrufbar.
+Deno.serve(async (req) => {
   try {
-    const jetzt = new Date().toISOString().split("T")[0];
+    requireCron(req);
 
-    // Schritt 1: Vergangene Veranstaltungen auf "Abgeschlossen" setzen
+    // "Heute" in Europe/Berlin (die Function selbst läuft in UTC)
+    const heute = heuteBerlin();
+
+    // Schritt 1: Vergangene Veranstaltungen auf "Abgeschlossen" setzen.
+    // Maßgeblich ist das Ende: coalesce(datum_ende, datum) < heute.
+    // Mehrtägige Events werden so erst nach dem letzten Tag abgeschlossen.
     const { error: statusError } = await supabase
       .from("veranstaltungen")
       .update({ status: "Abgeschlossen" })
-      .lt("datum", jetzt)
+      .or(`datum_ende.lt.${heute},and(datum_ende.is.null,datum.lt.${heute})`)
       .neq("status", "Abgeschlossen");
 
     if (statusError) {
@@ -22,7 +28,7 @@ Deno.serve(async (_req) => {
       console.log("Veranstaltungs-Status aktualisiert.");
     }
 
-    // Schritt 2: Vergangene Veranstaltungen laden für Punkte-Vergabe
+    // Schritt 2: Abgeschlossene Veranstaltungen laden für Punkte-Vergabe
     const { data: vergangeneEvents, error: evError } = await supabase
       .from("veranstaltungen")
       .select("id, name")
@@ -31,14 +37,14 @@ Deno.serve(async (_req) => {
     if (evError) {
       return new Response(
         JSON.stringify({ erfolg: false, fehler: evError.message }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        { status: 500, headers: jsonHeaders }
       );
     }
 
     if (!vergangeneEvents || vergangeneEvents.length === 0) {
       return new Response(
         JSON.stringify({ erfolg: true, vergeben: 0, info: "Keine abgeschlossenen Events" }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: jsonHeaders }
       );
     }
 
@@ -55,14 +61,14 @@ Deno.serve(async (_req) => {
     if (schichtError) {
       return new Response(
         JSON.stringify({ erfolg: false, fehler: schichtError.message }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        { status: 500, headers: jsonHeaders }
       );
     }
 
     if (!schichten || schichten.length === 0) {
       return new Response(
         JSON.stringify({ erfolg: true, vergeben: 0, info: "Keine Schichten gefunden" }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: jsonHeaders }
       );
     }
 
@@ -72,11 +78,7 @@ Deno.serve(async (_req) => {
       schichtMap[s.id] = { punkte: s.punkte, bezeichnung: s.bezeichnung, veranstaltung_id: s.veranstaltung_id };
     });
 
-    // Schritt 4: Offene Belegungen laden
-    // ── FIX: Zusätzlich nach status = 'Angemeldet' filtern! ──
-    // Vorher wurden auch abgemeldete (status='abgesagt') Belegungen berücksichtigt,
-    // solange punkte_vergeben noch false war (was beim Abmelden nicht geändert wird).
-    // Dadurch bekamen User Punkte für Schichten, aus denen sie sich abgemeldet hatten.
+    // Schritt 4: Offene Belegungen laden (nur aktive Anmeldungen, keine abgesagten)
     const { data: belegungen, error: belegungError } = await supabase
       .from("schichtbelegungen")
       .select("id, mitglied_id, schicht_id")
@@ -87,14 +89,14 @@ Deno.serve(async (_req) => {
     if (belegungError) {
       return new Response(
         JSON.stringify({ erfolg: false, fehler: belegungError.message }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        { status: 500, headers: jsonHeaders }
       );
     }
 
     if (!belegungen || belegungen.length === 0) {
       return new Response(
         JSON.stringify({ erfolg: true, vergeben: 0, info: "Alle Punkte bereits vergeben" }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: jsonHeaders }
       );
     }
 
@@ -102,50 +104,70 @@ Deno.serve(async (_req) => {
     let fehler = 0;
 
     for (const b of belegungen) {
-      const schicht = schichtMap[b.schicht_id];
-      const punkte = schicht?.punkte ?? 0;
-      const schichtName = schicht?.bezeichnung ?? "Schicht";
-      const eventName = eventNameMap[schicht?.veranstaltung_id] ?? "Veranstaltung";
+      try {
+        const schicht = schichtMap[b.schicht_id];
+        const punkte = schicht?.punkte ?? 0;
+        const schichtName = schicht?.bezeichnung ?? "Schicht";
+        const eventName = eventNameMap[schicht?.veranstaltung_id] ?? "Veranstaltung";
 
-      const { error: punkteError } = await supabase.rpc("add_punkte", {
-        user_id: b.mitglied_id,
-        amount: punkte,
-      });
+        // 1. Belegung "beanspruchen": nur wer das Flag von false auf true setzt, darf Punkte vergeben.
+        //    Läuft die Function doppelt (oder parallel), bekommt die zweite Instanz keine Zeile zurück.
+        const { data: beansprucht, error: claimError } = await supabase
+          .from("schichtbelegungen")
+          .update({ punkte_vergeben: true })
+          .eq("id", b.id)
+          .eq("punkte_vergeben", false)
+          .select("id");
 
-      if (punkteError) { fehler++; continue; }
+        if (claimError) { console.error("Claim-Fehler:", claimError.message); fehler++; continue; }
+        if (!beansprucht || beansprucht.length === 0) continue; // schon von anderem Lauf erledigt
 
-      const { error: updateError } = await supabase
-        .from("schichtbelegungen")
-        .update({ punkte_vergeben: true })
-        .eq("id", b.id);
+        // 2. Punkte vergeben. add_punkte zählt schichten_count selbst um 1 hoch.
+        const { error: punkteError } = await supabase.rpc("add_punkte", {
+          user_id: b.mitglied_id,
+          amount: punkte,
+        });
 
-      if (updateError) { fehler++; continue; }
+        if (punkteError) {
+          console.error("add_punkte-Fehler:", punkteError.message);
+          // Flag zurücksetzen, damit der nächste Lauf es erneut versucht
+          const { error: resetError } = await supabase
+            .from("schichtbelegungen")
+            .update({ punkte_vergeben: false })
+            .eq("id", b.id);
+          if (resetError) console.error("Flag-Reset fehlgeschlagen für Belegung", b.id, resetError.message);
+          fehler++;
+          continue;
+        }
 
-      await supabase.rpc("increment_schichten_count", {
-        user_id: b.mitglied_id,
-      });
+        const { error: notifError } = await supabase.from("benachrichtigungen").insert({
+          mitglied_id: b.mitglied_id,
+          typ: "punkte",
+          titel: `+${punkte} Punkte erhalten`,
+          nachricht: `Danke für deinen Einsatz bei „${schichtName}" (${eventName}).`,
+          punkte,
+          gelesen: false,
+        });
+        if (notifError) console.error("Benachrichtigung fehlgeschlagen:", notifError.message);
 
-      await supabase.from("benachrichtigungen").insert({
-        mitglied_id: b.mitglied_id,
-        typ: "punkte",
-        titel: `+${punkte} Punkte erhalten`,
-        nachricht: `Danke für deinen Einsatz bei „${schichtName}" (${eventName}).`,
-        punkte,
-        gelesen: false,
-      });
-
-      vergeben++;
+        vergeben++;
+      } catch (err) {
+        console.error("Fehler bei Belegung", b.id, String(err));
+        fehler++;
+      }
     }
 
     return new Response(
       JSON.stringify({ erfolg: true, vergeben, fehler, gesamt: belegungen.length }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: jsonHeaders }
     );
 
   } catch (err) {
+    const authAntwort = authFehlerResponse(err, {});
+    if (authAntwort) return authAntwort;
     return new Response(
       JSON.stringify({ erfolg: false, fehler: String(err) }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: jsonHeaders }
     );
   }
 });
