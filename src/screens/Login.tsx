@@ -137,9 +137,13 @@ export default function Login() {
     if (!email)                { setError('Bitte E-Mail eingeben.'); return }
     if (!validateEmail(email)) { setError('Bitte eine gültige E-Mail eingeben.'); return }
     setLoading(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(email)
-    if (error) setError(error.message)
-    else setMessage('Reset-Link wurde gesendet! Bitte prüfe deine E-Mails.')
+    // Die Function antwortet immer gleich, egal ob es die Adresse gibt. Deshalb zeigen wir auch
+    // immer dieselbe Meldung. Den Rücksprung-Link baut der Server aus dem Vereins-Slug.
+    const { error } = await supabase.functions.invoke('passwort-reset', {
+      body: { email: email.trim(), verein_slug: verein.slug },
+    })
+    if (error) setError('Die Anfrage konnte nicht gesendet werden. Bitte versuche es später noch einmal.')
+    else setMessage('Wenn es zu dieser Adresse ein Konto gibt, haben wir dir einen Link zum Zurücksetzen geschickt. Bitte prüfe auch den Spam-Ordner.')
     setLoading(false)
   }
 

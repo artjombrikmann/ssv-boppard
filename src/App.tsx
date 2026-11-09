@@ -12,6 +12,7 @@ import Verwaltung from './screens/Verwaltung'
 import Profil from './screens/Profil'
 import NotificationToggle from './components/NotificationToggle'
 import Beitreten from './screens/Beitreten'
+import PasswortNeu from './screens/PasswortNeu'
 import { beitrittNehmen } from './beitrittsDaten'
 import { useVerein } from './VereinContext'
 
@@ -135,6 +136,10 @@ export default function App() {
   }
 
   const ungelesen = benachrichtigungen.filter(b => !b.gelesen).length
+
+  // Link aus der Reset-Mail: Der Nutzer ist durch den Link vorübergehend angemeldet.
+  // Diese Seite muss VOR dem Login/der Mitgliedschaftsprüfung greifen, sonst landet er in der App.
+  if (window.location.pathname === '/passwort-neu') return <PasswortNeu />
 
   function zeitFormatieren(iso: string) {
     const d = new Date(iso)
