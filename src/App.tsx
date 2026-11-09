@@ -11,6 +11,7 @@ import Shop from './screens/Shop'
 import Verwaltung from './screens/Verwaltung'
 import Profil from './screens/Profil'
 import NotificationToggle from './components/NotificationToggle'
+import { useVerein } from './VereinContext'
 
 type TabId = 'home' | 'marktplatz' | 'meineschichten' | 'rangliste' | 'shop' | 'verwaltung' | 'profil'
 
@@ -33,6 +34,8 @@ const NAV_TABS = [
 ]
 
 export default function App() {
+  const verein = useVerein()
+  const kuerzel = verein.name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3).toUpperCase()
   const [session, setSession]                     = useState<any>(null)
   const [profile, setProfile]                     = useState<Profile | null>(null)
   const [activeTab, setActiveTab]                 = useState<TabId>('home')
@@ -102,9 +105,11 @@ export default function App() {
 
   if (loading) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', gap:12 }}>
-      <img src="/LOGO-SSV-BOPPARD-_1_.png" alt="SSV Boppard" style={{ width:80, height:80, objectFit:'contain' }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
-      <p style={{ color:'#5d5e61', fontSize:14, fontFamily:'Manrope,sans-serif' }}>SSV Boppard wird geladen...</p>
+      {verein.logo_url && (
+        <img src={verein.logo_url} alt={verein.name} style={{ width:80, height:80, objectFit:'contain' }}
+          onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
+      )}
+      <p style={{ color:'#5d5e61', fontSize:14, fontFamily:'Manrope,sans-serif' }}>{verein.name} wird geladen...</p>
     </div>
   )
 
@@ -136,15 +141,19 @@ export default function App() {
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:'50%', overflow:'hidden', background:'#fff', border:'1.5px solid #e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            <img src="/LOGO-SSV-BOPPARD-_1_.png" alt="SSV" style={{ width:32, height:32, objectFit:'contain' }}
-              onError={(e) => {
-                const el = e.target as HTMLImageElement
-                el.style.display = 'none'
-                el.parentElement!.innerHTML = '<span style="font-family:Lexend,sans-serif;font-weight:900;font-size:10px;color:#0d631b">SSV</span>'
-              }} />
+            {verein.logo_url ? (
+              <img src={verein.logo_url} alt={verein.name} style={{ width:32, height:32, objectFit:'contain' }}
+                onError={(e) => {
+                  const el = e.target as HTMLImageElement
+                  el.style.display = 'none'
+                  el.parentElement!.textContent = kuerzel
+                }} />
+            ) : (
+              <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color:'var(--primary)' }}>{kuerzel}</span>
+            )}
           </div>
-          <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, color:'#0d631b', fontSize:14, textTransform:'uppercase', letterSpacing:'0.1em' }}>
-            SSV Boppard
+          <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, color:'var(--primary)', fontSize:14, textTransform:'uppercase', letterSpacing:'0.1em' }}>
+            {verein.name}
           </span>
         </div>
 

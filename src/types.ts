@@ -1,3 +1,20 @@
+export interface Verein {
+  slug: string
+  name: string
+  logo_url: string | null
+  farbe_primary: string
+  farbe_secondary: string | null
+  icon_192_url: string | null
+  icon_512_url: string | null
+  features: Record<string, boolean>
+  rechtsname: string | null
+  anschrift: string | null
+  plz_ort: string | null
+  land: string | null
+  kontakt_email: string | null
+  vertretung: string | null
+}
+
 export interface Profile {
   id: string
   name: string
