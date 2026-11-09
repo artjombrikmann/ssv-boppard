@@ -86,6 +86,9 @@ export default function Login() {
       email: email.trim(),
       password,
       options: {
+        // Der Bestätigungslink soll auf diese Seite zurückführen (nicht immer auf die Site URL).
+        // Erlaubt sind nur Adressen aus "Redirect URLs" in Supabase, alle anderen fallen auf die Site URL zurück.
+        emailRedirectTo: window.location.origin,
         data: {
           name: fullName,
           display_name: vorname,
