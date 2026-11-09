@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile, Schichtbelegung } from '../types'
+import { Profile, Mitgliedschaft, Schichtbelegung } from '../types'
 
-interface Props { profile: Profile; onTabChange: (tab: string) => void }
+interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void }
 
 export default function MeineSchichten({ profile, onTabChange }: Props) {
   const [bookings, setBookings] = useState<Schichtbelegung[]>([])

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { Profile, Schichtbelegung, Einstellungen } from "../types";
+import { Profile, Schichtbelegung, Einstellungen, Mitgliedschaft } from "../types";
 
 interface Props {
   profile: Profile;
+  mitgliedschaft: Mitgliedschaft;
   onProfileUpdate: (updated: Profile) => void;
+  onMitgliedschaftNeuLaden: () => Promise<void>;
   onTabChange: (tab: string) => void;
 }
 
@@ -40,7 +42,7 @@ const VOUCHERS = [
   },
 ];
 
-export default function Profil({ profile, onProfileUpdate, onTabChange }: Props) {
+export default function Profil({ profile, mitgliedschaft, onProfileUpdate, onMitgliedschaftNeuLaden, onTabChange }: Props) {
   const [bookings, setBookings] = useState<Schichtbelegung[]>([]);
   const [settings, setSettings] = useState<Einstellungen>({
     id: 1,
@@ -84,10 +86,11 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
     setRedeeming(true);
     try {
       // Aktuelles Guthaben frisch aus der DB (der Client-State kann veraltet sein)
-      const { data: aktuell } = await supabase.from("profiles").select("punkte").eq("id", profile.id).single();
+      const { data: aktuell } = await supabase.from("mitgliedschaften").select("punkte")
+        .eq("user_id", profile.id).eq("verein_id", mitgliedschaft.verein_id).single();
       const guthaben = aktuell?.punkte ?? 0;
       if (guthaben < req) {
-        onProfileUpdate({ ...profile, punkte: guthaben });
+        await onMitgliedschaftNeuLaden();
         setRedeemError("Nicht genug Punkte.");
         return;
       }
@@ -120,8 +123,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
       }
 
       // Punktestand neu laden
-      const { data: neu } = await supabase.from("profiles").select("punkte").eq("id", profile.id).single();
-      if (neu) onProfileUpdate({ ...profile, punkte: neu.punkte ?? 0 });
+      await onMitgliedschaftNeuLaden();
     } finally {
       setRedeeming(false);
     }
@@ -185,7 +187,7 @@ export default function Profil({ profile, onProfileUpdate, onTabChange }: Props)
     }
   }
 
-  const pts = profile.punkte ?? 0;
+  const pts = mitgliedschaft.punkte ?? 0;
   const nextBadge = BADGES.find((b) => pts < b.req);
   const progress  = nextBadge ? Math.round((pts / nextBadge.req) * 100) : 100;
 

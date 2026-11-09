@@ -1,4 +1,5 @@
 export interface Verein {
+  id: string
   slug: string
   name: string
   logo_url: string | null
@@ -15,13 +16,30 @@ export interface Verein {
   vertretung: string | null
 }
 
+/** Mitgliedschaft eines Kontos in EINEM Verein: Rolle, Punkte, Einwilligungen. */
+export interface Mitgliedschaft {
+  user_id: string
+  verein_id: string
+  is_admin: boolean
+  is_trainer: boolean
+  punkte: number
+  schichten_count: number
+  consent_rangliste: boolean
+  consent_erinnerung: boolean
+  datenschutz_akzeptiert_am: string | null
+  nutzungsbedingungen_akzeptiert_am: string | null
+}
+
 export interface Profile {
   id: string
   name: string
   email: string
-  punkte: number
-  schichten_count: number
-  is_admin: boolean
+  // Veraltet: Punkte und Rolle gehören zur Mitgliedschaft (siehe oben). Die Spalten in
+  // profiles bleiben bis AP 6 und werden nur noch von der Mitgliederliste in der
+  // Verwaltung gelesen. Wer eigene Punkte/Admin braucht, nutzt "mitgliedschaft".
+  punkte?: number
+  schichten_count?: number
+  is_admin?: boolean
   consent_rangliste: boolean
   consent_dsgvo: boolean
   consent_erinnerung: boolean

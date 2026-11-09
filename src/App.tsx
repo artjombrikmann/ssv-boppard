@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
-import { Profile } from './types'
+import { Profile, Mitgliedschaft } from './types'
 import './styles.css'
 import Login from './screens/Login'
 import Home from './screens/Home'
@@ -38,6 +38,7 @@ export default function App() {
   const kuerzel = verein.name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3).toUpperCase()
   const [session, setSession]                     = useState<any>(null)
   const [profile, setProfile]                     = useState<Profile | null>(null)
+  const [mitgliedschaft, setMitgliedschaft]       = useState<Mitgliedschaft | null>(null)
   const [activeTab, setActiveTab]                 = useState<TabId>('home')
   const [loading, setLoading]                     = useState(true)
   const [showOverlay, setShowOverlay]             = useState(false)
@@ -53,19 +54,31 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setSession(session)
       if (session) loadProfile(session.user.id)
-      else { setProfile(null); setLoading(false) }
+      else { setProfile(null); setMitgliedschaft(null); setLoading(false) }
     })
     return () => subscription.unsubscribe()
   }, [])
 
   async function loadProfile(userId: string) {
     try {
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+      const [{ data }, { data: mg }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        supabase.from('mitgliedschaften').select('*').eq('user_id', userId).eq('verein_id', verein.id).maybeSingle(),
+      ])
       setProfile(data ?? null)
-      if (data) loadBenachrichtigungen()
+      setMitgliedschaft((mg as Mitgliedschaft | null) ?? null)
+      if (data && mg) loadBenachrichtigungen()
     } finally {
       setLoading(false)
     }
+  }
+
+  // Punkte und Schichtzahl nach einer Aktion (Einlösen, Gutschein) frisch aus der Mitgliedschaft holen
+  async function mitgliedschaftNeuLaden() {
+    if (!session) return
+    const { data } = await supabase.from('mitgliedschaften').select('*')
+      .eq('user_id', session.user.id).eq('verein_id', verein.id).maybeSingle()
+    if (data) setMitgliedschaft(data as Mitgliedschaft)
   }
 
   async function loadBenachrichtigungen() {
@@ -121,12 +134,26 @@ export default function App() {
     </div>
   )
 
-  const tabs = profile.is_admin
+  // Konto vorhanden, aber nicht Mitglied dieses Vereins (z. B. Konto aus einem anderen Verein).
+  // Der Beitritt mit Freischaltcode folgt mit der Registrierung (AP 4, Teil 3).
+  if (!mitgliedschaft) return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', gap:12, padding:24, textAlign:'center' }}>
+      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:18, color:'#191c1b' }}>Du bist noch kein Mitglied bei {verein.name}</p>
+      <p style={{ color:'#5d5e61', fontSize:14, fontFamily:'Manrope,sans-serif' }}>Bitte wende dich an deinen Admin.</p>
+      <button onClick={handleLogout} style={{ marginTop:8, padding:'12px 20px', border:'none', borderRadius:12, background:'var(--primary)', color:'#fff', fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14, cursor:'pointer' }}>Abmelden</button>
+    </div>
+  )
+
+  const tabs = mitgliedschaft.is_admin
     ? [...NAV_TABS, { id: 'verwaltung' as TabId, icon: 'shield', label: 'Admin' }]
     : NAV_TABS
 
   // FIX: onTabChange nutzt jetzt handleTabChange
-  const screenProps = { profile, onTabChange: (tab: string) => handleTabChange(tab as TabId) }
+  const screenProps = {
+    profile, mitgliedschaft, verein,
+    onTabChange: (tab: string) => handleTabChange(tab as TabId),
+    onMitgliedschaftNeuLaden: mitgliedschaftNeuLaden,
+  }
 
   return (
     <div style={{ maxWidth:680, margin:'0 auto', minHeight:'100vh', background:'#f8faf8', position:'relative' }}>
@@ -299,7 +326,7 @@ export default function App() {
                     <div style={{ marginTop:8, display:'inline-flex', alignItems:'center', gap:4, background:'#e8f5ee', borderRadius:20, padding:'3px 10px' }}>
                       <span className="material-symbols-outlined" style={{ fontSize:13, color:'#0d631b' }}>stars</span>
                       <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:12, color:'#0d631b' }}>
-                        {profile.punkte} Punkte
+                        {mitgliedschaft.punkte} Punkte
                       </span>
                     </div>
                   </div>
@@ -345,7 +372,7 @@ export default function App() {
         {activeTab === 'meineschichten' && <MeineSchichten {...screenProps} />}
         {activeTab === 'rangliste'      && <Rangliste      {...screenProps} />}
         {activeTab === 'shop'           && <Shop           {...screenProps} />}
-        {activeTab === 'verwaltung' && profile.is_admin && <Verwaltung {...screenProps} />}
+        {activeTab === 'verwaltung' && mitgliedschaft.is_admin && <Verwaltung {...screenProps} />}
         {activeTab === 'profil' && (
           <Profil
             {...screenProps}

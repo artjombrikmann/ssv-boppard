@@ -47,7 +47,10 @@ function mischen(hex: string, ziel: [number, number, number], anteil: number): s
 function cacheLesen(slug: string): Verein | null {
   try {
     const roh = localStorage.getItem(CACHE_PREFIX + slug)
-    return roh ? (JSON.parse(roh) as Verein) : null
+    if (!roh) return null
+    const v = JSON.parse(roh) as Verein
+    // Einträge ohne id stammen aus einer älteren App-Version und sind unbrauchbar.
+    return typeof v?.id === 'string' && v.id ? v : null
   } catch { return null }
 }
 function cacheSchreiben(slug: string, v: Verein | null) {
@@ -134,6 +137,9 @@ export function VereinProvider({ children }: { children: ReactNode }) {
       return
     }
     if (!data) { cacheSchreiben(slug, null); setVerein(null); setStatus('unbekannt'); return }
+
+    // Ohne id kann die App keine Mitgliedschaft finden (View noch ohne id, siehe sql/04f).
+    if (!data.id) { console.error('vereine_public liefert keine id, sql/04f ausführen'); setStatus(s => (s === 'ok' ? 'ok' : 'fehler')); return }
 
     const v: Verein = { ...data, features: data.features ?? {} }
     cacheSchreiben(slug, v)

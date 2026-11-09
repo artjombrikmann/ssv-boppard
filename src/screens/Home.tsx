@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile, Schicht } from '../types'
+import { Profile, Schicht, Mitgliedschaft } from '../types'
 
-interface Props { profile: Profile; onTabChange: (tab: string) => void }
+interface Props { profile: Profile; mitgliedschaft: Mitgliedschaft; onTabChange: (tab: string) => void }
 
-export default function Home({ profile, onTabChange }: Props) {
+export default function Home({ profile, mitgliedschaft, onTabChange }: Props) {
   const [shifts,    setShifts]    = useState<Schicht[]>([])
   const [rank,      setRank]      = useState<string>('–')
   const [nextShift, setNextShift] = useState<Schicht | null>(null)
@@ -32,14 +32,16 @@ export default function Home({ profile, onTabChange }: Props) {
       .limit(1)
     if (bk && bk.length > 0 && bk[0].schichten) setNextShift(bk[0].schichten as any)
 
-    const { data: members } = await supabase.from('profiles').select('punkte').order('punkte', { ascending: false })
-    if (members) {
-      const pos = members.findIndex(m => m.punkte <= (profile.punkte ?? 0))
-      setRank('#' + (pos + 1))
+    // Rang nur unter Mitgliedern mit Rangliste-Einwilligung (ohne Gäste). Wer selbst nicht
+    // teilnimmt, bekommt keinen Rang angezeigt.
+    const { data: liste } = await supabase.rpc('rangliste', { p_verein: mitgliedschaft.verein_id })
+    if (liste) {
+      const pos = (liste as { user_id: string }[]).findIndex(m => m.user_id === profile.id)
+      setRank(pos >= 0 ? '#' + (pos + 1) : '–')
     }
   }
 
-  const pts = profile.punkte ?? 0
+  const pts = mitgliedschaft.punkte ?? 0
   const nextBadgeReq = pts < 10 ? 10 : pts < 50 ? 50 : pts < 150 ? 150 : 300
   const progress = Math.min(100, Math.round((pts / nextBadgeReq) * 100))
   const nextBadgeName = pts < 10 ? 'Vereinshelfer' : pts < 50 ? 'Schichtprofi' : pts < 150 ? 'Vereinsheld' : 'Legende'
@@ -98,7 +100,7 @@ export default function Home({ profile, onTabChange }: Props) {
         </div>
         <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
           <span className="material-symbols-outlined icon-fill" style={{ fontSize:24, color:'#0d631b' }}>calendar_today</span>
-          <p style={{ fontFamily:'Lexend,sans-serif', fontSize:24, fontWeight:900, marginTop:4 }}>{profile.schichten_count ?? 0}</p>
+          <p style={{ fontFamily:'Lexend,sans-serif', fontSize:24, fontWeight:900, marginTop:4 }}>{mitgliedschaft.schichten_count ?? 0}</p>
           <p style={{ fontSize:10, fontWeight:800, color:'#5d5e61', textTransform:'uppercase', letterSpacing:'.06em' }}>Schichten</p>
         </div>
       </div>
