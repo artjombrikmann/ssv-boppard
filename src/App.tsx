@@ -11,6 +11,8 @@ import Shop from './screens/Shop'
 import Verwaltung from './screens/Verwaltung'
 import Profil from './screens/Profil'
 import NotificationToggle from './components/NotificationToggle'
+import Beitreten from './screens/Beitreten'
+import { beitrittNehmen } from './beitrittsDaten'
 import { useVerein } from './VereinContext'
 
 type TabId = 'home' | 'marktplatz' | 'meineschichten' | 'rangliste' | 'shop' | 'verwaltung' | 'profil'
@@ -39,6 +41,7 @@ export default function App() {
   const [session, setSession]                     = useState<any>(null)
   const [profile, setProfile]                     = useState<Profile | null>(null)
   const [mitgliedschaft, setMitgliedschaft]       = useState<Mitgliedschaft | null>(null)
+  const [beitrittHinweis, setBeitrittHinweis]     = useState('')
   const [activeTab, setActiveTab]                 = useState<TabId>('home')
   const [loading, setLoading]                     = useState(true)
   const [showOverlay, setShowOverlay]             = useState(false)
@@ -48,26 +51,48 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      if (session) loadProfile(session.user.id)
+      if (session) loadProfile(session.user.id, session.user.email)
       else setLoading(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setSession(session)
-      if (session) loadProfile(session.user.id)
-      else { setProfile(null); setMitgliedschaft(null); setLoading(false) }
+      if (session) loadProfile(session.user.id, session.user.email)
+      else { setProfile(null); setMitgliedschaft(null); setBeitrittHinweis(''); setLoading(false) }
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  async function loadProfile(userId: string) {
+  async function loadProfile(userId: string, email?: string | null) {
     try {
       const [{ data }, { data: mg }] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', userId).single(),
         supabase.from('mitgliedschaften').select('*').eq('user_id', userId).eq('verein_id', verein.id).maybeSingle(),
       ])
       setProfile(data ?? null)
-      setMitgliedschaft((mg as Mitgliedschaft | null) ?? null)
-      if (data && mg) loadBenachrichtigungen()
+      let mitglied = (mg as Mitgliedschaft | null) ?? null
+
+      // Konto ohne Mitgliedschaft in diesem Verein: Hat die Registrierung Code und Einwilligungen
+      // gemerkt (E-Mail war schon bekannt), wird automatisch beigetreten. Sonst zeigt die App den Beitreten-Screen.
+      if (data && !mitglied) {
+        const offen = beitrittNehmen(verein.slug, email ?? data.email)
+        if (offen) {
+          const { data: erg, error } = await supabase.rpc('verein_beitreten', {
+            p_slug: verein.slug, p_code: offen.code, p_consents: offen.consents,
+          })
+          if (!error && (erg === 'ok' || erg === 'bereits_mitglied')) {
+            const { data: neu } = await supabase.from('mitgliedschaften').select('*')
+              .eq('user_id', userId).eq('verein_id', verein.id).maybeSingle()
+            mitglied = (neu as Mitgliedschaft | null) ?? null
+          } else {
+            setBeitrittHinweis(erg === 'gesperrt'
+              ? 'Zu viele Fehlversuche. Bitte warte eine Stunde und versuche es dann erneut.'
+              : 'Der Freischaltcode war nicht richtig. Bitte gib ihn hier noch einmal ein.')
+          }
+        }
+      }
+
+      setMitgliedschaft(mitglied)
+      if (data && mitglied) loadBenachrichtigungen()
     } finally {
       setLoading(false)
     }
@@ -134,14 +159,14 @@ export default function App() {
     </div>
   )
 
-  // Konto vorhanden, aber nicht Mitglied dieses Vereins (z. B. Konto aus einem anderen Verein).
-  // Der Beitritt mit Freischaltcode folgt mit der Registrierung (AP 4, Teil 3).
+  // Konto vorhanden, aber nicht Mitglied dieses Vereins (z. B. Konto aus einem anderen Verein):
+  // Beitreten mit Freischaltcode und Einwilligungen.
   if (!mitgliedschaft) return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', gap:12, padding:24, textAlign:'center' }}>
-      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:18, color:'#191c1b' }}>Du bist noch kein Mitglied bei {verein.name}</p>
-      <p style={{ color:'#5d5e61', fontSize:14, fontFamily:'Manrope,sans-serif' }}>Bitte wende dich an deinen Admin.</p>
-      <button onClick={handleLogout} style={{ marginTop:8, padding:'12px 20px', border:'none', borderRadius:12, background:'var(--primary)', color:'#fff', fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14, cursor:'pointer' }}>Abmelden</button>
-    </div>
+    <Beitreten
+      hinweis={beitrittHinweis}
+      onBeigetreten={async () => { setBeitrittHinweis(''); await loadProfile(session.user.id, session.user.email) }}
+      onLogout={handleLogout}
+    />
   )
 
   const tabs = mitgliedschaft.is_admin
