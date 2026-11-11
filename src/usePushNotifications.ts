@@ -10,7 +10,9 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return new Uint8Array([...rawData].map(char => char.charCodeAt(0)))
 }
 
-export function usePushNotifications(userId: string | undefined) {
+// vereinId: Eine Person kann in mehreren Vereinen sein; jede Subdomain ist eine eigene PWA mit eigener
+// Subscription. Gespeichert wird je (Person, Verein), damit sich die Vereine nicht überschreiben.
+export function usePushNotifications(userId: string | undefined, vereinId: string | undefined) {
   const [permission, setPermission] = useState<NotificationPermission>('default')
   const [subscribed, setSubscribed]   = useState(false)
 
@@ -31,7 +33,7 @@ export function usePushNotifications(userId: string | undefined) {
   }
 
   async function subscribe() {
-    if (!userId) return
+    if (!userId || !vereinId) return
     const reg = await registerServiceWorker()
     if (!reg) return
 
@@ -50,11 +52,12 @@ export function usePushNotifications(userId: string | undefined) {
       // Subscription in Supabase speichern
       await supabase.from('push_subscriptions').upsert({
         user_id: userId,
+        verein_id: vereinId,
         endpoint: sub.endpoint,
         p256dh: sub.keys?.p256dh,
         auth: sub.keys?.auth,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
+      }, { onConflict: 'user_id,verein_id' })
 
       setSubscribed(true)
     } catch (err) {
@@ -63,12 +66,12 @@ export function usePushNotifications(userId: string | undefined) {
   }
 
   async function unsubscribe() {
-    if (!userId) return
+    if (!userId || !vereinId) return
     const reg = await navigator.serviceWorker.getRegistration()
     if (!reg) return
     const sub = await reg.pushManager.getSubscription()
     if (sub) await sub.unsubscribe()
-    await supabase.from('push_subscriptions').delete().eq('user_id', userId)
+    await supabase.from('push_subscriptions').delete().eq('user_id', userId).eq('verein_id', vereinId)
     setSubscribed(false)
   }
 

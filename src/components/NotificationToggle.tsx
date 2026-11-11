@@ -1,9 +1,9 @@
 import { usePushNotifications } from '../usePushNotifications'
 
-interface Props { userId: string }
+interface Props { userId: string; vereinId: string }
 
-export default function NotificationToggle({ userId }: Props) {
-  const { permission, subscribed, subscribe, unsubscribe } = usePushNotifications(userId)
+export default function NotificationToggle({ userId, vereinId }: Props) {
+  const { permission, subscribed, subscribe, unsubscribe } = usePushNotifications(userId, vereinId)
 
   const isSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 

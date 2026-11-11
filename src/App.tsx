@@ -317,7 +317,7 @@ export default function App() {
 
                   {/* Push Notifications Toggle */}
                   <div style={{ padding:'12px 16px', borderTop:'1px solid #f3f4f6' }}>
-                    <NotificationToggle userId={profile?.id ?? ''} />
+                    <NotificationToggle userId={profile?.id ?? ''} vereinId={verein.id} />
                   </div>
                 </div>
               </>
