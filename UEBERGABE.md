@@ -1,6 +1,6 @@
 # Übergabe: Stand Multi-Mandant-Umbau
 
-Stand: 2026-11-11 (Nachmittag). Branch `multi-mandant` (gleich `main`, Merge-Commit `7264507`, PR #3). Gesamtanleitung: `PHASE_B_MULTI_MANDANT.md`, Inventur: `INVENTUR_SCHRITT_0.md`.
+Stand: 2026-11-11 (Abend). Arbeitsbranch jetzt `vorbereitung-ap5` (siehe unten), `main` ist unverändert auf 7264507. Branch `multi-mandant` (gleich `main`, Merge-Commit `7264507`, PR #3). Gesamtanleitung: `PHASE_B_MULTI_MANDANT.md`, Inventur: `INVENTUR_SCHRITT_0.md`.
 
 Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Datenbank und dieselben Edge Functions. Getestet wird nur mit Test-Accounts.
 
@@ -23,9 +23,19 @@ Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Daten
 
 ## Sofort offen
 
-Nichts Dringendes. Beobachten: Das Event am 2026-11-13 läuft auf der neuen Version. Nach dem Merge laufen alle Boppard-Nutzer über das neue Frontend; Meldungen von Mitgliedern ernst nehmen.
+**1. Datenleck schließen (empfohlen vor den Events):** Am 2026-11-11 zeigte eine Abfrage mit dem öffentlichen Anon-Key,
+dass ohne Login lesbar sind:  (76 Zeilen mit E-Mail und Punkten),  (Freischaltcode, Admin-Mail),
+ (119),  (88),  (2),  (3). Es wurden nur Anzahlen abgefragt.
+Das Leck besteht seit Beginn (), nur das Schreiben war seit 01_hotfix zu.
+Sofortmaßnahme:  (restriktive Policies, ändert nichts Bestehendes, mit 6  zurücknehmbar).
+**Vorher** die Prüfabfrage 1b aus der Datei ausführen (Besitzer der Funktionen = postgres).
+Danach sofort mit dem Test-Account: Login, Marktplatz, an-/abmelden; als Admin den Admin-Tab öffnen.
 
-Prüfabfrage Punkte (muss 0 liefern, siehe unten) nach dem Merge ist noch zu bestätigen.
+**2.  ausführen** (rein additiv, jederzeit).
+
+**3. Event am 2026-11-13** und zwei große Events Ende November: bis dahin nichts an Punkten, Cron oder Mails ändern.
+
+Danach, in dieser Reihenfolge: Frontend-Umbau (4.4, 4.5, 4.7, Rest 4.6), dann AP 5. Alles Weitere steht in .
 
 ## SQL-Dateien (alle in der Datenbank ausgeführt, außer wo vermerkt)
 
@@ -43,6 +53,10 @@ Prüfabfrage Punkte (muss 0 liefern, siehe unten) nach dem Merge ist noch zu bes
 | `04g_registrierung_serverseitig.sql` | Code-Prüfung in `handle_new_user`, Einwilligungen, Brücke `einstellungen` nach `vereins_geheimnisse` | ausgeführt |
 | `04h_reset_versuche.sql` | Begrenzung Passwort-Reset | ausgeführt |
 | `04i_event_typen_darstellung.sql` | `icon`, `verlauf`, `deko` in `event_typen`, Boppard-Werte, Verlauf-Prüfung | ausgeführt |
+| `04j_switch_hilfsfunktionen.sql` | `schicht_teilnehmer`, `belegungen_offen`, `vereins_mitglieder` (mit `email_bestaetigt`) | **noch nicht ausgeführt**, nur auf Branch `vorbereitung-ap5` |
+| `04k_anonym_sperren.sql` | restriktive Policies gegen anonymen Lesezugriff | **noch nicht ausgeführt**, empfohlen vor den Events |
+| `05_b3_switch.sql` | DB-Switch (RLS pro Verein) | **geschrieben, nicht ausgeführt**, erst nach den Events |
+| `05_b3_rollback.sql` | macht den Switch rückgängig | geschrieben, nicht ausgeführt |
 
 ## Wichtige Entscheidungen und Fallen
 
@@ -58,6 +72,15 @@ Prüfabfrage Punkte (muss 0 liefern, siehe unten) nach dem Merge ist noch zu bes
 - **Nameserver** der Domain sind bei Vercel (`ns1/ns2.vercel-dns.com`). DNS-Einträge legt man unter Vercel, Domains, DNS Records an, **nicht** auf der Resend-Seite.
 - **Cron-Secret** liegt als Function-Secret `CRON_SECRET` und in den zwei Cron-Jobs. Der Wert stand einmal in einem Screenshot. Auf Wunsch neu setzen (SQL und `supabase secrets set`).
 - **Gäste** (`is_temp`): 2 Stück. Die Verwaltung legt sie noch per `profiles.insert` an (ohne Mitgliedschaft). Umstellung auf `temp_user_anlegen` ist Teil 4.5.
+
+## Stand der Vorbereitung
+
+Branch `vorbereitung-ap5` (auf GitHub, nicht in `main`): 04j, 04k, 05 Switch und Rollback, `AP5_VORBEREITUNG.md`, außerdem
+die Änderung für Push je Verein (`user_id,verein_id`), damit Push nach dem Switch nicht bricht. Die SQL-Dateien sind mit
+dem Postgres-Parser (`libpg-query`) auf Syntax geprüft, aber **nie gegen die echte Datenbank gelaufen**.
+Bei Funden beim Durchsehen des Codes: Marktplatz-Join auf `profiles` (zeigte nach dem Switch "Unbekannt"), Verwaltung schreibt
+`schichten.belegt` direkt (wirkungslos seit 01_hotfix), `push_subscriptions onConflict` (brach nach dem Switch).
+Achtung Push: Es gibt aktuell **keine** Function, die Push sendet. Der Schalter speichert nur ein Abo.
 
 ## Arbeitsregeln, die sich bewährt haben
 
