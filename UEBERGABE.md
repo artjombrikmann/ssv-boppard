@@ -24,18 +24,18 @@ Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Daten
 ## Sofort offen
 
 **1. Datenleck schließen (empfohlen vor den Events):** Am 2026-11-11 zeigte eine Abfrage mit dem öffentlichen Anon-Key,
-dass ohne Login lesbar sind:  (76 Zeilen mit E-Mail und Punkten),  (Freischaltcode, Admin-Mail),
- (119),  (88),  (2),  (3). Es wurden nur Anzahlen abgefragt.
-Das Leck besteht seit Beginn (), nur das Schreiben war seit 01_hotfix zu.
-Sofortmaßnahme:  (restriktive Policies, ändert nichts Bestehendes, mit 6  zurücknehmbar).
+dass ohne Login lesbar sind: `profiles` (76 Zeilen mit E-Mail und Punkten), `einstellungen` (Freischaltcode, Admin-Mail),
+`schichtbelegungen` (119), `schichten` (88), `push_subscriptions` (2), `preise` (3). Es wurden nur Anzahlen abgefragt.
+Das Leck besteht seit Beginn (Policy `read_all`), nur das Schreiben war seit `01_hotfix` zu.
+Sofortmaßnahme: `sql/04k_anonym_sperren.sql` (restriktive Policies, ändert nichts Bestehendes, mit 6 `drop policy` zurücknehmbar).
 **Vorher** die Prüfabfrage 1b aus der Datei ausführen (Besitzer der Funktionen = postgres).
 Danach sofort mit dem Test-Account: Login, Marktplatz, an-/abmelden; als Admin den Admin-Tab öffnen.
 
-**2.  ausführen** (rein additiv, jederzeit).
+**2. `sql/04j_switch_hilfsfunktionen.sql` ausführen** (rein additiv, jederzeit).
 
 **3. Event am 2026-11-13** und zwei große Events Ende November: bis dahin nichts an Punkten, Cron oder Mails ändern.
 
-Danach, in dieser Reihenfolge: Frontend-Umbau (4.4, 4.5, 4.7, Rest 4.6), dann AP 5. Alles Weitere steht in .
+Danach, in dieser Reihenfolge: Frontend-Umbau (4.4, 4.5, 4.7, Rest 4.6), dann AP 5. Alles Weitere steht in `AP5_VORBEREITUNG.md`.
 
 ## SQL-Dateien (alle in der Datenbank ausgeführt, außer wo vermerkt)
 
