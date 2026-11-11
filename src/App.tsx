@@ -197,7 +197,7 @@ export default function App() {
         display:'flex', alignItems:'center', justifyContent:'space-between'
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:36, height:36, borderRadius:'50%', overflow:'hidden', background:'#fff', border:'1.5px solid #e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <div style={{ width:36, height:36, borderRadius:'50%', overflow:'hidden', background:'#fff', border:'1.5px solid var(--primary-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
             {verein.logo_url ? (
               <img src={verein.logo_url} alt={verein.name} style={{ width:32, height:32, objectFit:'contain' }}
                 onError={(e) => {
@@ -225,12 +225,12 @@ export default function App() {
               }}
               style={{
                 width:34, height:34, borderRadius:'50%', border:'none',
-                background: ungelesen > 0 ? '#e8f5ee' : 'none',
+                background: ungelesen > 0 ? 'var(--primary-light)' : 'none',
                 cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
                 position:'relative'
               }}
             >
-              <span className="material-symbols-outlined" style={{ fontSize:20, color: ungelesen > 0 ? '#0d631b' : '#9ca3af' }}>
+              <span className="material-symbols-outlined" style={{ fontSize:20, color: ungelesen > 0 ? 'var(--primary)' : '#9ca3af' }}>
                 notifications
               </span>
               {ungelesen > 0 && (
@@ -266,7 +266,7 @@ export default function App() {
                     {ungelesen > 0 && (
                       <button
                         onClick={alleAlsGelesenMarkieren}
-                        style={{ background:'none', border:'none', color:'#0d631b', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'Manrope,sans-serif' }}
+                        style={{ background:'none', border:'none', color:'var(--primary)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'Manrope,sans-serif' }}
                       >
                         Alle gelesen
                       </button>
@@ -289,10 +289,10 @@ export default function App() {
                         }}>
                           <div style={{
                             width:34, height:34, borderRadius:'50%',
-                            background:'#e8f5ee', flexShrink:0,
+                            background:'var(--primary-light)', flexShrink:0,
                             display:'flex', alignItems:'center', justifyContent:'center'
                           }}>
-                            <span className="material-symbols-outlined" style={{ fontSize:16, color:'#0d631b' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize:16, color:'var(--primary)' }}>
                               workspace_premium
                             </span>
                           </div>
@@ -308,7 +308,7 @@ export default function App() {
                             </p>
                           </div>
                           {!b.gelesen && (
-                            <div style={{ width:8, height:8, borderRadius:'50%', background:'#0d631b', flexShrink:0, marginTop:4 }} />
+                            <div style={{ width:8, height:8, borderRadius:'50%', background:'var(--primary)', flexShrink:0, marginTop:4 }} />
                           )}
                         </div>
                       ))
@@ -327,10 +327,10 @@ export default function App() {
           {/* Profil-Avatar */}
           <div style={{ position:'relative' }}>
             <div
-              style={{ width:34, height:34, borderRadius:'50%', background:'#e8f5ee', border:'2px solid #0d631b', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}
+              style={{ width:34, height:34, borderRadius:'50%', background:'var(--primary-light)', border:'2px solid var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}
               onClick={() => { setShowOverlay(v => !v); setShowBenachrichtigungen(false) }}
             >
-              <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:11, color:'#0d631b' }}>
+              <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:11, color:'var(--primary)' }}>
                 {(profile.display_name || profile.name)?.split(' ').map((n:string) => n[0]).join('').slice(0,2).toUpperCase()}
               </span>
             </div>
@@ -353,9 +353,9 @@ export default function App() {
                     <div style={{ fontFamily:'Manrope,sans-serif', fontSize:12, color:'#9ca3af', marginTop:2 }}>
                       {profile.email}
                     </div>
-                    <div style={{ marginTop:8, display:'inline-flex', alignItems:'center', gap:4, background:'#e8f5ee', borderRadius:20, padding:'3px 10px' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize:13, color:'#0d631b' }}>stars</span>
-                      <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:12, color:'#0d631b' }}>
+                    <div style={{ marginTop:8, display:'inline-flex', alignItems:'center', gap:4, background:'var(--primary-light)', borderRadius:20, padding:'3px 10px' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize:13, color:'var(--primary)' }}>stars</span>
+                      <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:12, color:'var(--primary)' }}>
                         {mitgliedschaft.punkte} Punkte
                       </span>
                     </div>
@@ -371,7 +371,7 @@ export default function App() {
                       color:'#111827', textAlign:'left'
                     }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize:18, color:'#0d631b' }}>manage_accounts</span>
+                    <span className="material-symbols-outlined" style={{ fontSize:18, color:'var(--primary)' }}>manage_accounts</span>
                     Konto bearbeiten
                   </button>
 

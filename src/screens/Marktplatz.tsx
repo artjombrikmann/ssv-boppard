@@ -94,7 +94,8 @@ export default function Marktplatz({ profile }: Props) {
 
   function closeDanke() { setShowDanke(false); stopKonfetti() }
 
-  const FARBEN = ['#0d631b','#86efac','#fff','#fde68a','#f87171','#60a5fa']
+  const PRIMARY = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#0d631b'
+  const FARBEN = [PRIMARY,'#86efac','#fff','#fde68a','#f87171','#60a5fa']
 
   function startKonfetti() {
     const canvas = canvasRef.current
@@ -161,12 +162,12 @@ export default function Marktplatz({ profile }: Props) {
 
       <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
         <button onClick={() => setFilter(null)}
-          style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === null ? '#0d631b' : '#eceeec', color: filter === null ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
+          style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === null ? 'var(--primary)' : '#eceeec', color: filter === null ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
           Alle
         </button>
         {kategorien.map(k => (
           <button key={k.id} onClick={() => setFilter(filter === k.id ? null : k.id)}
-            style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === k.id ? '#0d631b' : '#eceeec', color: filter === k.id ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
+            style={{ padding:'7px 16px', borderRadius:99, border:'none', background: filter === k.id ? 'var(--primary)' : '#eceeec', color: filter === k.id ? '#fff' : '#5d5e61', fontSize:11, fontWeight:900, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'Lexend,sans-serif', flexShrink:0 }}>
             {k.name}
           </button>
         ))}
@@ -224,18 +225,18 @@ export default function Marktplatz({ profile }: Props) {
             <button onClick={() => toggleEvent(evId)}
               style={{ width:'100%', padding:'12px 16px', border:'none', background: isExpanded ? '#f8faf8' : '#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', borderTop:'1px solid #f3f4f6' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <span className="material-symbols-outlined" style={{ fontSize:20, color:'#0d631b' }}>event_note</span>
+                <span className="material-symbols-outlined" style={{ fontSize:20, color:'var(--primary)' }}>event_note</span>
                 <div style={{ textAlign:'left' }}>
                   <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13, color:'#111827' }}>
                     {gruppe.shifts.length} Schicht{gruppe.shifts.length !== 1 ? 'en' : ''} anzeigen
                   </p>
                   <p style={{ fontSize:11, color:'#9ca3af', marginTop:1 }}>
                     {freieSchichtenCount} frei
-                    {meineSchichtenCount > 0 && <span style={{ marginLeft:6, color:'#0d631b', fontWeight:700 }}>· {meineSchichtenCount} angemeldet</span>}
+                    {meineSchichtenCount > 0 && <span style={{ marginLeft:6, color:'var(--primary)', fontWeight:700 }}>· {meineSchichtenCount} angemeldet</span>}
                   </p>
                 </div>
               </div>
-              <span className="material-symbols-outlined" style={{ fontSize:24, color:'#0d631b', transition:'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+              <span className="material-symbols-outlined" style={{ fontSize:24, color:'var(--primary)', transition:'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                 expand_more
               </span>
             </button>
@@ -267,10 +268,10 @@ export default function Marktplatz({ profile }: Props) {
             <div style={{ width:40, height:4, background:'#e5e7eb', borderRadius:2, margin:'0 auto 16px' }} />
             <h2 style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:18, marginBottom:8 }}>{selected.kategorien?.name ?? selected.bezeichnung}</h2>
             <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-              <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:900, padding:'3px 10px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>+{selected.punkte} Pkt</span>
+              <span style={{ background:'var(--primary-light)', color:'var(--primary)', fontSize:10, fontWeight:900, padding:'3px 10px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>+{selected.punkte} Pkt</span>
               <span style={{ background:'#f3f4f6', color:'#5d5e61', fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99 }}>{selected.veranstaltungen?.name}</span>
               {(selected as any).kategorien?.name && (
-                <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99 }}>{(selected as any).kategorien.name}</span>
+                <span style={{ background:'var(--primary-light)', color:'var(--primary)', fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99 }}>{(selected as any).kategorien.name}</span>
               )}
             </div>
             <InfoRow label="Uhrzeit"  value={`${selected.startzeit?.slice(0,5)} – ${selected.endzeit?.slice(0,5)} Uhr`} />
@@ -289,8 +290,8 @@ export default function Marktplatz({ profile }: Props) {
                       <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                         {teilnehmer.map((t, i) => (
                           <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'#f8faf8', borderRadius:10 }}>
-                            <div style={{ width:30, height:30, borderRadius:'50%', background:'#e8f5ee', border:'1.5px solid #0d631b', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                              <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color:'#0d631b' }}>
+                            <div style={{ width:30, height:30, borderRadius:'50%', background:'var(--primary-light)', border:'1.5px solid var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                              <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color:'var(--primary)' }}>
                                 {t.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
                               </span>
                             </div>
@@ -312,7 +313,7 @@ export default function Marktplatz({ profile }: Props) {
                   onClick={() => leaveShift(selected)} disabled={saving}>Schicht abmelden</button>
               : isFull(selected)
                 ? <button disabled style={{ width:'100%', padding:14, background:'#f3f4f6', color:'#9ca3af', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:14, cursor:'not-allowed' }}>Schicht ist voll</button>
-                : <button style={{ width:'100%', padding:14, background:'#0d631b', color:'#fff', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:14, cursor:'pointer' }}
+                : <button style={{ width:'100%', padding:14, background:'var(--primary)', color:'#fff', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:14, cursor:'pointer' }}
                     onClick={() => joinShift(selected)} disabled={saving}>
                     Ich bin dabei! (+{selected.punkte} Punkte)
                   </button>
@@ -325,15 +326,15 @@ export default function Marktplatz({ profile }: Props) {
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:998, display:'flex', alignItems:'center', justifyContent:'center' }}>
           <div style={{ background:'#fff', borderRadius:24, padding:32, textAlign:'center', maxWidth:300, width:'90%' }}>
             <div style={{ fontSize:52, marginBottom:8 }}>🎉</div>
-            <h2 style={{ fontFamily:'Lexend,sans-serif', fontSize:22, fontWeight:900, color:'#0d631b', marginBottom:6 }}>Danke dir!</h2>
+            <h2 style={{ fontFamily:'Lexend,sans-serif', fontSize:22, fontWeight:900, color:'var(--primary)', marginBottom:6 }}>Danke dir!</h2>
             <p style={{ fontSize:14, color:'#5d5e61', lineHeight:1.5, marginBottom:16 }}>
               Du hast <strong>{dankeShift?.kategorien?.name ?? dankeShift?.bezeichnung}</strong> übernommen.<br />Der SSV Boppard freut sich auf dich!
             </p>
-            <div style={{ background:'#e8f5ee', borderRadius:12, padding:'10px 14px', marginBottom:20, fontSize:12, color:'#0d631b', fontWeight:700 }}>
+            <div style={{ background:'var(--primary-light)', borderRadius:12, padding:'10px 14px', marginBottom:20, fontSize:12, color:'var(--primary)', fontWeight:700 }}>
               +{dankeShift?.punkte} Punkte werden nach der Schicht gutgeschrieben
             </div>
             <button onClick={closeDanke}
-              style={{ width:'100%', background:'#0d631b', color:'#fff', fontFamily:'Lexend,sans-serif', fontWeight:900, padding:14, borderRadius:12, border:'none', fontSize:14, cursor:'pointer' }}>
+              style={{ width:'100%', background:'var(--primary)', color:'#fff', fontFamily:'Lexend,sans-serif', fontWeight:900, padding:14, borderRadius:12, border:'none', fontSize:14, cursor:'pointer' }}>
               Super, bin dabei! ✓
             </button>
           </div>
@@ -345,7 +346,7 @@ export default function Marktplatz({ profile }: Props) {
 
 function ShiftItem({ shift, isMine, isFull, onClick }: { shift: Schicht; isMine: boolean; isFull: boolean; onClick: () => void }) {
   return (
-    <div onClick={onClick} style={{ background:'#f8faf8', borderRadius:14, padding:'12px 14px', cursor:'pointer', border: isMine ? '1.5px solid #0d631b' : '1px solid #f3f4f6' }}>
+    <div onClick={onClick} style={{ background:'#f8faf8', borderRadius:14, padding:'12px 14px', cursor:'pointer', border: isMine ? '1.5px solid var(--primary)' : '1px solid #f3f4f6' }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
         <div>
           <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{shift.kategorien?.name ?? shift.bezeichnung}</h3>
@@ -355,14 +356,14 @@ function ShiftItem({ shift, isMine, isFull, onClick }: { shift: Schicht; isMine:
               {shift.startzeit?.slice(0,5)} – {shift.endzeit?.slice(0,5)}
             </span>
             {(shift as any).kategorien?.name && (
-              <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:700, padding:'1px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
+              <span style={{ background:'var(--primary-light)', color:'var(--primary)', fontSize:10, fontWeight:700, padding:'1px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
                 {(shift as any).kategorien.name}
               </span>
             )}
           </span>
         </div>
         <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
-          <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:900, padding:'2px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>{shift.punkte} Pkt</span>
+          <span style={{ background:'var(--primary-light)', color:'var(--primary)', fontSize:10, fontWeight:900, padding:'2px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>{shift.punkte} Pkt</span>
           {isMine && <span style={{ background:'#dcfce7', color:'#16a34a', fontSize:9, fontWeight:900, padding:'2px 8px', borderRadius:99 }}>✓ Dabei</span>}
         </div>
       </div>
@@ -374,8 +375,8 @@ function ShiftItem({ shift, isMine, isFull, onClick }: { shift: Schicht; isMine:
 function BelegungsAnzeige({ belegt, gesamt }: { belegt: number; gesamt: number }) {
   const voll  = belegt >= gesamt
   const halb  = !voll && belegt / gesamt >= 0.6
-  const bg    = voll ? '#fef2f2' : halb ? '#fffbeb' : '#e8f5ee'
-  const farbe = voll ? '#ef4444' : halb ? '#b45309' : '#0d631b'
+  const bg    = voll ? '#fef2f2' : halb ? '#fffbeb' : 'var(--primary-light)'
+  const farbe = voll ? '#ef4444' : halb ? '#b45309' : 'var(--primary)'
   const frei  = gesamt - belegt
   return (
     <div style={{ background:bg, borderRadius:8, padding:'6px 10px', display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>

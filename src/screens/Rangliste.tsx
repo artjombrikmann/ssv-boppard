@@ -50,9 +50,9 @@ export default function Rangliste({ profile, mitgliedschaft }: Props) {
 
       {/* Eigener Rang (falls nicht in Top 5) */}
       {myRank === 0 && (
-        <div style={{ background:'#e8f5ee', borderRadius:14, padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
-          <span className="material-symbols-outlined icon-fill" style={{ fontSize:20, color:'#0d631b' }}>info</span>
-          <p style={{ fontSize:13, color:'#0d631b', fontWeight:600 }}>Du bist noch nicht in den Top 5. Übernimm mehr Schichten um aufzusteigen!</p>
+        <div style={{ background:'var(--primary-light)', borderRadius:14, padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
+          <span className="material-symbols-outlined icon-fill" style={{ fontSize:20, color:'var(--primary)' }}>info</span>
+          <p style={{ fontSize:13, color:'var(--primary)', fontWeight:600 }}>Du bist noch nicht in den Top 5. Übernimm mehr Schichten um aufzusteigen!</p>
         </div>
       )}
 
@@ -75,7 +75,7 @@ export default function Rangliste({ profile, mitgliedschaft }: Props) {
                     <div key={member?.id ?? idx} style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
                       {/* Avatar */}
                       <div style={{ position:'relative', marginBottom:8 }}>
-                        <div style={{ width: cfg.rang === 1 ? 56 : 46, height: cfg.rang === 1 ? 56 : 46, borderRadius:'50%', background: isMe ? '#0d631b' : '#f3f4f6', border:`3px solid ${cfg.farbe}`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize: cfg.rang === 1 ? 18 : 14, color: isMe ? '#fff' : '#5d5e61' }}>
+                        <div style={{ width: cfg.rang === 1 ? 56 : 46, height: cfg.rang === 1 ? 56 : 46, borderRadius:'50%', background: isMe ? 'var(--primary)' : '#f3f4f6', border:`3px solid ${cfg.farbe}`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize: cfg.rang === 1 ? 18 : 14, color: isMe ? '#fff' : '#5d5e61' }}>
                           {initials}
                         </div>
                         <span style={{ position:'absolute', bottom:-4, right:-4, fontSize:14 }}>{medaillen[cfg.rang - 1]}</span>
@@ -106,9 +106,9 @@ export default function Rangliste({ profile, mitgliedschaft }: Props) {
                 const isMe   = m.id === profile.id
                 const initials = m.name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()
                 return (
-                  <div key={m.id} style={{ background:'#fff', borderRadius:14, padding:'12px 14px', display:'flex', alignItems:'center', gap:12, border: isMe ? '2px solid #0d631b' : '1px solid #f3f4f6' }}>
+                  <div key={m.id} style={{ background:'#fff', borderRadius:14, padding:'12px 14px', display:'flex', alignItems:'center', gap:12, border: isMe ? '2px solid var(--primary)' : '1px solid #f3f4f6' }}>
                     <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:16, color:'#9ca3af', minWidth:24, textAlign:'center' }}>#{rang}</span>
-                    <div style={{ width:36, height:36, borderRadius:'50%', background: isMe ? '#0d631b' : '#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:12, color: isMe ? '#fff' : '#5d5e61', flexShrink:0 }}>
+                    <div style={{ width:36, height:36, borderRadius:'50%', background: isMe ? 'var(--primary)' : '#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:12, color: isMe ? '#fff' : '#5d5e61', flexShrink:0 }}>
                       {initials}
                     </div>
                     <div style={{ flex:1 }}>
@@ -117,7 +117,7 @@ export default function Rangliste({ profile, mitgliedschaft }: Props) {
                       </p>
                       <p style={{ fontSize:11, color:'#5d5e61' }}>{m.schichten_count ?? 0} Schichten</p>
                     </div>
-                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:15, color:'#0d631b' }}>
+                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:15, color:'var(--primary)' }}>
                       {m.punkte?.toLocaleString('de')}
                     </span>
                   </div>
@@ -127,9 +127,9 @@ export default function Rangliste({ profile, mitgliedschaft }: Props) {
           )}
 
           {/* Info */}
-          <div style={{ background:'#e8f5ee', borderRadius:12, padding:'10px 14px', display:'flex', gap:8, alignItems:'flex-start' }}>
-            <span className="material-symbols-outlined" style={{ fontSize:16, color:'#0d631b', marginTop:1 }}>info</span>
-            <p style={{ fontSize:11, color:'#0d631b', fontWeight:500, lineHeight:1.5 }}>
+          <div style={{ background:'var(--primary-light)', borderRadius:12, padding:'10px 14px', display:'flex', gap:8, alignItems:'flex-start' }}>
+            <span className="material-symbols-outlined" style={{ fontSize:16, color:'var(--primary)', marginTop:1 }}>info</span>
+            <p style={{ fontSize:11, color:'var(--primary)', fontWeight:500, lineHeight:1.5 }}>
               Die Rangliste zeigt die Top 5 Mitglieder der aktuellen Saison. Dein Rang wird nach jeder vergebenen Schicht aktualisiert.
             </p>
           </div>
