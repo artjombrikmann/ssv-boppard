@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Profile, Mitgliedschaft, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
+import { getBanner, useEventTypen } from '../eventBanner'
+import { useVerein } from '../VereinContext'
 
 interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void }
 type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv' | 'vorlagen'
@@ -12,7 +14,9 @@ interface VeranstaltungMitAuslastung extends Veranstaltung {
   auslastung: number
 }
 
-export default function Verwaltung({ profile }: Props) {
+export default function Verwaltung({ profile, mitgliedschaft }: Props) {
+  const verein = useVerein()
+  const typen = useEventTypen(mitgliedschaft?.verein_id ?? verein.id)
   const [tab,        setTab]        = useState<AdminTab>('uebersicht')
   const [bookings,   setBookings]   = useState<Schichtbelegung[]>([])
   const [members,    setMembers]    = useState<Profile[]>([])
@@ -124,7 +128,7 @@ export default function Verwaltung({ profile }: Props) {
     }).select().single()
     if (error) { showToast('❌ Fehler: ' + error.message); return }
     showToast('✅ Veranstaltung angelegt!')
-    setNewEv({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
+    setNewEv({ name:'', datum:'', datum_ende:'', ort:'', kategorie: typen[0]?.key ?? 'heimspiel' })
     await loadAll()
     setActiveEvId(data.id); setActiveEvName(data.name)
     setNewSh(prev => ({ ...prev, veranstaltung_id: data.id }))
@@ -368,6 +372,14 @@ export default function Verwaltung({ profile }: Props) {
   interface Vorlage { id: string; event_typ: string; name: string; schicht_vorlagen_positionen?: VorlagenPosition[] }
   const [vorlagen,       setVorlagen]       = useState<Vorlage[]>([])
   const [newVorlage,     setNewVorlage]     = useState({ name:'', event_typ:'heimspiel' })
+
+  // Hat der Verein keinen Typ "heimspiel", gilt als Standard der erste Typ seiner Liste
+  useEffect(() => {
+    const erster = typen[0]?.key
+    if (!erster) return
+    setNewEv(p => typen.some(t => t.key === p.kategorie) ? p : { ...p, kategorie: erster })
+    setNewVorlage(p => typen.some(t => t.key === p.event_typ) ? p : { ...p, event_typ: erster })
+  }, [typen])
   const [aktiveVorlage,  setAktiveVorlage]  = useState<Vorlage | null>(null)
   const [newPos,         setNewPos]         = useState<VorlagenPosition>({ bezeichnung:'', kategorie_id:'', start_offset:-60, end_offset:0, plaetze:2, punkte:10, beschreibung:'' })
   const [vorlagenLoading, setVorlagenLoading] = useState(false)
@@ -397,7 +409,7 @@ export default function Verwaltung({ profile }: Props) {
     const { data, error } = await supabase.from('schicht_vorlagen').insert({ name: newVorlage.name.trim(), event_typ: newVorlage.event_typ }).select().single()
     if (error) { showToast('❌ Fehler: ' + error.message); return }
     showToast('✅ Vorlage angelegt!')
-    setNewVorlage({ name:'', event_typ:'heimspiel' })
+    setNewVorlage({ name:'', event_typ: typen[0]?.key ?? 'heimspiel' })
     await loadVorlagen()
     const vorlageSelect = `*, schicht_vorlagen_positionen ( id, vorlage_id, bezeichnung, kategorie_id, start_offset, end_offset, plaetze, punkte, beschreibung )`
     const vorlage = (await supabase.from('schicht_vorlagen').select(vorlageSelect).eq('id', data.id).single()).data
@@ -644,10 +656,7 @@ export default function Verwaltung({ profile }: Props) {
                   <F label="Name"><input style={inp} value={newEv.name} onChange={e=>setNewEv({...newEv,name:e.target.value})} placeholder="z.B. Sommerfest 2025"/></F>
                   <F label="Kategorie / Banner">
                     <select style={inp} value={newEv.kategorie} onChange={e=>setNewEv({...newEv,kategorie:e.target.value})}>
-                      <option value="heimspiel">⚽ Heimspiel</option>
-                      <option value="vereinsfest">🎉 Vereinsfest</option>
-                      <option value="flag-football">🏈 Flag-Football</option>
-                      <option value="turnier">🏆 Turnier</option>
+                      {typen.map(t => <option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
                     </select>
                   </F>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -822,10 +831,7 @@ export default function Verwaltung({ profile }: Props) {
               <F label="Name"><input style={inp} value={newVorlage.name} onChange={e => setNewVorlage({...newVorlage, name: e.target.value})} placeholder="z.B. Standard Heimspiel" /></F>
               <F label="Event-Typ">
                 <select style={inp} value={newVorlage.event_typ} onChange={e => setNewVorlage({...newVorlage, event_typ: e.target.value})}>
-                  <option value="heimspiel">⚽ Heimspiel</option>
-                  <option value="vereinsfest">🎉 Vereinsfest</option>
-                  <option value="turnier">🏆 Turnier</option>
-                  <option value="flag-football">🏈 Flag-Football</option>
+                  {typen.map(t => <option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
                 </select>
               </F>
               <button style={btnPrimary} onClick={addVorlage}>Vorlage anlegen →</button>
@@ -840,7 +846,7 @@ export default function Verwaltung({ profile }: Props) {
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <div style={{ cursor:'pointer', flex:1 }} onClick={() => setAktiveVorlage(aktiveVorlage?.id === v.id ? null : v)}>
                       <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
-                        {v.event_typ === 'heimspiel' ? '⚽' : v.event_typ === 'vereinsfest' ? '🎉' : v.event_typ === 'turnier' ? '🏆' : '🏈'} {v.name}
+                        {getBanner(typen, v.event_typ).icon} {v.name}
                       </p>
                       <p style={{ fontSize:11, color:'#9ca3af' }}>{(v.schicht_vorlagen_positionen as any)?.length ?? 0} Schicht-Positionen</p>
                     </div>

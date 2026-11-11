@@ -1,11 +1,14 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 import { Profile, Mitgliedschaft, Schicht, Kategorie, Veranstaltung } from '../types'
-import { getBanner } from '../eventBanner'
+import { getBanner, useEventTypen } from '../eventBanner'
+import { useVerein } from '../VereinContext'
 
 interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void }
 
-export default function Marktplatz({ profile }: Props) {
+export default function Marktplatz({ profile, mitgliedschaft }: Props) {
+  const verein = useVerein()
+  const typen = useEventTypen(mitgliedschaft?.verein_id ?? verein.id)
   const [schichten,       setSchichten]       = useState<Schicht[]>([])
   const [kategorien,      setKategorien]      = useState<Kategorie[]>([])
   const [veranstaltungen, setVeranstaltungen] = useState<Veranstaltung[]>([])
@@ -175,9 +178,9 @@ export default function Marktplatz({ profile }: Props) {
 
       {Object.entries(grouped).map(([evId, gruppe]) => {
         const ev = veranstaltungen.find(v => v.id === Number(evId))
-        const banner = getBanner(ev?.kategorie as any)
+        const banner = getBanner(typen, ev?.kategorie)
         const isExpanded = expandedEvents.has(evId)
-        const isVereinsfest = ev?.kategorie === 'vereinsfest'
+        const isVereinsfest = banner.deko
         const meineSchichtenCount = gruppe.shifts.filter(s => isMine(s)).length
         const freieSchichtenCount = gruppe.shifts.filter(s => !isFull(s)).length
 
@@ -328,7 +331,7 @@ export default function Marktplatz({ profile }: Props) {
             <div style={{ fontSize:52, marginBottom:8 }}>🎉</div>
             <h2 style={{ fontFamily:'Lexend,sans-serif', fontSize:22, fontWeight:900, color:'var(--primary)', marginBottom:6 }}>Danke dir!</h2>
             <p style={{ fontSize:14, color:'#5d5e61', lineHeight:1.5, marginBottom:16 }}>
-              Du hast <strong>{dankeShift?.kategorien?.name ?? dankeShift?.bezeichnung}</strong> übernommen.<br />Der SSV Boppard freut sich auf dich!
+              Du hast <strong>{dankeShift?.kategorien?.name ?? dankeShift?.bezeichnung}</strong> übernommen.<br />{verein.name} freut sich auf dich!
             </p>
             <div style={{ background:'var(--primary-light)', borderRadius:12, padding:'10px 14px', marginBottom:20, fontSize:12, color:'var(--primary)', fontWeight:700 }}>
               +{dankeShift?.punkte} Punkte werden nach der Schicht gutgeschrieben
