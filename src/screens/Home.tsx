@@ -70,7 +70,7 @@ export default function Home({ profile, mitgliedschaft, onTabChange }: Props) {
       </div>
 
       {/* Punkte Hero */}
-      <div style={{ background:'#0d631b', borderRadius:24, padding:24, color:'#fff', position:'relative', overflow:'hidden' }}>
+      <div style={{ background:'var(--primary)', borderRadius:24, padding:24, color:'#fff', position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', right:-20, top:-20, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,.05)' }} />
         <div style={{ position:'absolute', right:16, bottom:16, opacity:.08 }}>
           <span className="material-symbols-outlined icon-fill" style={{ fontSize:90 }}>workspace_premium</span>
@@ -94,12 +94,12 @@ export default function Home({ profile, mitgliedschaft, onTabChange }: Props) {
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
         <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
-          <span className="material-symbols-outlined icon-fill" style={{ fontSize:24, color:'#0d631b' }}>leaderboard</span>
+          <span className="material-symbols-outlined icon-fill" style={{ fontSize:24, color:'var(--primary)' }}>leaderboard</span>
           <p style={{ fontFamily:'Lexend,sans-serif', fontSize:24, fontWeight:900, marginTop:4 }}>{rank}</p>
           <p style={{ fontSize:10, fontWeight:800, color:'#5d5e61', textTransform:'uppercase', letterSpacing:'.06em' }}>Rang</p>
         </div>
         <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
-          <span className="material-symbols-outlined icon-fill" style={{ fontSize:24, color:'#0d631b' }}>calendar_today</span>
+          <span className="material-symbols-outlined icon-fill" style={{ fontSize:24, color:'var(--primary)' }}>calendar_today</span>
           <p style={{ fontFamily:'Lexend,sans-serif', fontSize:24, fontWeight:900, marginTop:4 }}>{mitgliedschaft.schichten_count ?? 0}</p>
           <p style={{ fontSize:10, fontWeight:800, color:'#5d5e61', textTransform:'uppercase', letterSpacing:'.06em' }}>Schichten</p>
         </div>
@@ -110,12 +110,12 @@ export default function Home({ profile, mitgliedschaft, onTabChange }: Props) {
         <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
           <p style={{ fontSize:10, fontWeight:800, color:'#5d5e61', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>Deine nächste Schicht</p>
           <div style={{ display:'flex', gap:14, alignItems:'center' }}>
-            <div style={{ width:52, height:52, background:'#e8f5ee', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', borderBottom:'3px solid #0d631b', flexShrink:0 }}>
-              <span style={{ fontSize:8, fontWeight:900, color:'#0d631b', textTransform:'uppercase' }}>nächste</span>
-              <span className="material-symbols-outlined icon-fill" style={{ fontSize:22, color:'#0d631b' }}>event</span>
+            <div style={{ width:52, height:52, background:'var(--primary-light)', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', borderBottom:'3px solid var(--primary)', flexShrink:0 }}>
+              <span style={{ fontSize:8, fontWeight:900, color:'var(--primary)', textTransform:'uppercase' }}>nächste</span>
+              <span className="material-symbols-outlined icon-fill" style={{ fontSize:22, color:'var(--primary)' }}>event</span>
             </div>
             <div>
-              <p style={{ fontSize:10, fontWeight:900, color:'#0d631b', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:2 }}>
+              <p style={{ fontSize:10, fontWeight:900, color:'var(--primary)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:2 }}>
                 {(nextShift as any)?.veranstaltungen?.name}
               </p>
               <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:15 }}>{(nextShift as any)?.kategorien?.name ?? nextShift.bezeichnung}</h3>
@@ -135,7 +135,7 @@ export default function Home({ profile, mitgliedschaft, onTabChange }: Props) {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
           <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>Offene Schichten</p>
           <button onClick={() => onTabChange('marktplatz')}
-            style={{ background:'none', border:'none', color:'#0d631b', fontSize:12, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>
+            style={{ background:'none', border:'none', color:'var(--primary)', fontSize:12, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>
             Alle →
           </button>
         </div>
@@ -149,7 +149,7 @@ export default function Home({ profile, mitgliedschaft, onTabChange }: Props) {
             {groupedList.map(group => (
               <div key={group.name}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                  <span className="material-symbols-outlined icon-fill" style={{ fontSize:16, color:'#0d631b' }}>event</span>
+                  <span className="material-symbols-outlined icon-fill" style={{ fontSize:16, color:'var(--primary)' }}>event</span>
                   <div style={{ flex:1 }}>
                     <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:13, color:'#191c1b' }}>
                       {group.name}
@@ -160,7 +160,7 @@ export default function Home({ profile, mitgliedschaft, onTabChange }: Props) {
                       </span>
                     )}
                   </div>
-                  <span style={{ fontSize:10, fontWeight:900, color:'#0d631b', background:'#e8f5ee', padding:'2px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
+                  <span style={{ fontSize:10, fontWeight:900, color:'var(--primary)', background:'var(--primary-light)', padding:'2px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
                     {group.schichten.length} offen
                   </span>
                 </div>
@@ -201,7 +201,7 @@ function ShiftCard({ shift, allShifts, onTabChange }: { shift: Schicht; allShift
     <div style={{ background:'#fff', borderRadius:14, padding:'12px 14px', border:'1px solid #f3f4f6', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
       <div style={{ flex:1 }}>
         <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
-          <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:9, fontWeight:900, padding:'2px 7px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
+          <span style={{ background:'var(--primary-light)', color:'var(--primary)', fontSize:9, fontWeight:900, padding:'2px 7px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
             {shift.punkte} Pkt
           </span>
           {(shift as any).kategorien?.name && (
@@ -223,7 +223,7 @@ function ShiftCard({ shift, allShifts, onTabChange }: { shift: Schicht; allShift
         </div>
       </div>
       <button onClick={() => onTabChange('marktplatz')}
-        style={{ background:'#0d631b', color:'#fff', border:'none', borderRadius:10, padding:'7px 12px', fontSize:11, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif', whiteSpace:'nowrap' }}>
+        style={{ background:'var(--primary)', color:'#fff', border:'none', borderRadius:10, padding:'7px 12px', fontSize:11, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif', whiteSpace:'nowrap' }}>
         Ansehen
       </button>
     </div>

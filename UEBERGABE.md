@@ -1,6 +1,6 @@
 # Übergabe: Stand Multi-Mandant-Umbau
 
-Stand: 2026-11-09 (Abend). Branch `multi-mandant`. Gesamtanleitung: `PHASE_B_MULTI_MANDANT.md`, Inventur: `INVENTUR_SCHRITT_0.md`.
+Stand: 2026-11-11. Branch `multi-mandant` (gleich `main`, Merge-Commit `59613a0`). Gesamtanleitung: `PHASE_B_MULTI_MANDANT.md`, Inventur: `INVENTUR_SCHRITT_0.md`.
 
 Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Datenbank und dieselben Edge Functions. Getestet wird nur mit Test-Accounts.
 
@@ -13,19 +13,17 @@ Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Daten
 | 4.1 Vereinskontext, Branding, Manifest | Erledigt, in der Preview getestet |
 | 4.2 Mitgliedschaft, Punkte/Admin/Rang | Erledigt, getestet (Gutschein-Test lief, Mails kamen an) |
 | 4.3a Registrierung, Beitreten, Datenschutz | Erledigt, alle 6 Tests bestanden |
-| **4.3b Passwort-Reset** | **Code committet (`834f64e`), NICHT gepusht, NICHT deployt, NICHT getestet** |
+| 4.3b Passwort-Reset | Erledigt: `04h` ausgeführt, Function `passwort-reset` deployt, in Produktion getestet |
 | 4.4 bis 4.8 | Offen |
 | 5 bis 8 | Offen |
 
-`main` ist unverändert auf dem Stand AP 2 (`b61a998`). Die Produktions-App läuft mit dem alten Frontend. `multi-mandant` ist **nicht** gemergt.
+**`multi-mandant` ist seit 2026-11-11 nach `main` gemergt (PR #2, `59613a0`).** Die Produktions-App läuft mit dem neuen Frontend (Teil 4.1 bis 4.3b). Rollback bei Problemen: in Vercel den Production-Eintrag `b61a998` (Stand AP 2) suchen, Promote to Production. Die Datenbank bleibt, das alte Frontend arbeitet damit weiter.
 
-## Sofort offen (Teil 3b), in dieser Reihenfolge
+## Sofort offen
 
-1. **`sql/04h_reset_versuche.sql` ausführen** (SQL Editor, "Run and enable RLS"). Kontrolle: `zeilen = 0`, `rls_an = true`, `policies = 0`.
-2. **Function deployen:** `supabase functions deploy passwort-reset --project-ref kfawjltveddyoqewayzh` (Referenz endet auf **h**, einmal fehlte das h).
-3. **Pushen** (Claude pusht auf Zeichen): `git push`.
-4. **Testen:** Tabelle der Tests 1 bis 6 (Mail kommt, erfundene Adresse gibt dieselbe Meldung, 4. Anfrage sendet keine 4. Mail, Link, neues Passwort, Login). Tests 5 und 6 gehen **nur auf `app.`**, weil der Reset-Link immer auf die Vereinsadresse zeigt. Dort fehlt bis zum Merge die Seite `/passwort-neu`.
-5. **Entscheidung von Artjom:** Zwischen-Merge von `multi-mandant` nach `main` (Teil 1 bis 3 sehen für Boppard unverändert aus, Risiko liegt bei der noch nicht umgebauten Verwaltung) oder erst nach AP 4 komplett. Ohne Zwischen-Merge lässt sich der Reset-Ablauf nicht vollständig testen.
+Nichts Dringendes. Beobachten: Das Event am 2026-11-13 läuft auf der neuen Version. Nach dem Merge laufen alle Boppard-Nutzer über das neue Frontend; Meldungen von Mitgliedern ernst nehmen.
+
+Prüfabfrage Punkte (muss 0 liefern, siehe unten) nach dem Merge ist noch zu bestätigen.
 
 ## SQL-Dateien (alle in der Datenbank ausgeführt, außer wo vermerkt)
 
@@ -41,7 +39,7 @@ Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Daten
 | `04e_boppard_logo.sql` | Logo in `vereine` | ausgeführt |
 | `04f_vereine_public_id.sql` | `id` in `vereine_public` | ausgeführt |
 | `04g_registrierung_serverseitig.sql` | Code-Prüfung in `handle_new_user`, Einwilligungen, Brücke `einstellungen` nach `vereins_geheimnisse` | ausgeführt |
-| `04h_reset_versuche.sql` | Begrenzung Passwort-Reset | **NICHT ausgeführt** |
+| `04h_reset_versuche.sql` | Begrenzung Passwort-Reset | ausgeführt |
 
 ## Wichtige Entscheidungen und Fallen
 

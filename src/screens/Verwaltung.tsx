@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Profile, Mitgliedschaft, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
+import { getBanner, useEventTypen } from '../eventBanner'
+import { useVerein } from '../VereinContext'
 
 interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void }
 type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv' | 'vorlagen'
@@ -12,7 +14,9 @@ interface VeranstaltungMitAuslastung extends Veranstaltung {
   auslastung: number
 }
 
-export default function Verwaltung({ profile }: Props) {
+export default function Verwaltung({ profile, mitgliedschaft }: Props) {
+  const verein = useVerein()
+  const typen = useEventTypen(mitgliedschaft?.verein_id ?? verein.id)
   const [tab,        setTab]        = useState<AdminTab>('uebersicht')
   const [bookings,   setBookings]   = useState<Schichtbelegung[]>([])
   const [members,    setMembers]    = useState<Profile[]>([])
@@ -124,7 +128,7 @@ export default function Verwaltung({ profile }: Props) {
     }).select().single()
     if (error) { showToast('❌ Fehler: ' + error.message); return }
     showToast('✅ Veranstaltung angelegt!')
-    setNewEv({ name:'', datum:'', datum_ende:'', ort:'', kategorie:'heimspiel' })
+    setNewEv({ name:'', datum:'', datum_ende:'', ort:'', kategorie: typen[0]?.key ?? 'heimspiel' })
     await loadAll()
     setActiveEvId(data.id); setActiveEvName(data.name)
     setNewSh(prev => ({ ...prev, veranstaltung_id: data.id }))
@@ -368,6 +372,14 @@ export default function Verwaltung({ profile }: Props) {
   interface Vorlage { id: string; event_typ: string; name: string; schicht_vorlagen_positionen?: VorlagenPosition[] }
   const [vorlagen,       setVorlagen]       = useState<Vorlage[]>([])
   const [newVorlage,     setNewVorlage]     = useState({ name:'', event_typ:'heimspiel' })
+
+  // Hat der Verein keinen Typ "heimspiel", gilt als Standard der erste Typ seiner Liste
+  useEffect(() => {
+    const erster = typen[0]?.key
+    if (!erster) return
+    setNewEv(p => typen.some(t => t.key === p.kategorie) ? p : { ...p, kategorie: erster })
+    setNewVorlage(p => typen.some(t => t.key === p.event_typ) ? p : { ...p, event_typ: erster })
+  }, [typen])
   const [aktiveVorlage,  setAktiveVorlage]  = useState<Vorlage | null>(null)
   const [newPos,         setNewPos]         = useState<VorlagenPosition>({ bezeichnung:'', kategorie_id:'', start_offset:-60, end_offset:0, plaetze:2, punkte:10, beschreibung:'' })
   const [vorlagenLoading, setVorlagenLoading] = useState(false)
@@ -397,7 +409,7 @@ export default function Verwaltung({ profile }: Props) {
     const { data, error } = await supabase.from('schicht_vorlagen').insert({ name: newVorlage.name.trim(), event_typ: newVorlage.event_typ }).select().single()
     if (error) { showToast('❌ Fehler: ' + error.message); return }
     showToast('✅ Vorlage angelegt!')
-    setNewVorlage({ name:'', event_typ:'heimspiel' })
+    setNewVorlage({ name:'', event_typ: typen[0]?.key ?? 'heimspiel' })
     await loadVorlagen()
     const vorlageSelect = `*, schicht_vorlagen_positionen ( id, vorlage_id, bezeichnung, kategorie_id, start_offset, end_offset, plaetze, punkte, beschreibung )`
     const vorlage = (await supabase.from('schicht_vorlagen').select(vorlageSelect).eq('id', data.id).single()).data
@@ -526,7 +538,7 @@ export default function Verwaltung({ profile }: Props) {
       <div style={{ display:'flex', gap:1, background:'#eceeec', borderRadius:14, padding:4, overflowX:'auto' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ flex:1, padding:'8px 4px', borderRadius:10, border:'none', background: tab === t.id ? '#fff' : 'transparent', color: tab === t.id ? '#0d631b' : '#5d5e61', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, cursor:'pointer', whiteSpace:'nowrap', boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,.08)' : 'none', transition:'all .15s' }}>
+            style={{ flex:1, padding:'8px 4px', borderRadius:10, border:'none', background: tab === t.id ? '#fff' : 'transparent', color: tab === t.id ? 'var(--primary)' : '#5d5e61', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, cursor:'pointer', whiteSpace:'nowrap', boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,.08)' : 'none', transition:'all .15s' }}>
             {t.label}
           </button>
         ))}
@@ -534,7 +546,7 @@ export default function Verwaltung({ profile }: Props) {
 
       {tab === 'uebersicht' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <div style={{ background:'#0d631b', borderRadius:20, padding:20, color:'#fff' }}>
+          <div style={{ background:'var(--primary)', borderRadius:20, padding:20, color:'#fff' }}>
             <p style={{ fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'.08em', opacity:.7, marginBottom:12 }}>Vereins-Übersicht</p>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
               {[
@@ -562,8 +574,8 @@ export default function Verwaltung({ profile }: Props) {
               ].map(item => (
                 <button key={item.target} onClick={() => setTab(item.target as AdminTab)}
                   style={{ background:'#fff', border:'1px solid #f3f4f6', borderRadius:14, padding:'12px 14px', display:'flex', alignItems:'center', gap:10, cursor:'pointer', textAlign:'left' }}>
-                  <div style={{ width:36, height:36, borderRadius:10, background:'#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize:18, color:'#0d631b' }}>{item.icon}</span>
+                  <div style={{ width:36, height:36, borderRadius:10, background:'var(--primary-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize:18, color:'var(--primary)' }}>{item.icon}</span>
                   </div>
                   <div>
                     <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13, color:'#111827' }}>{item.label}</p>
@@ -580,15 +592,15 @@ export default function Verwaltung({ profile }: Props) {
               <p style={{ fontSize:12, color:'#9ca3af', margin:0 }}>Sendet eine Test-Mail an deine Admin-E-Mail-Adresse.</p>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
                 <button onClick={() => testMailSenden('reminder', profile.email ?? settings.admin_email)} disabled={testLoading !== null}
-                  style={{ ...btnSm, background: testLoading === 'reminder' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'reminder' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
+                  style={{ ...btnSm, background: testLoading === 'reminder' ? '#f3f4f6' : 'var(--primary-light)', color: testLoading === 'reminder' ? '#9ca3af' : 'var(--primary)', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
                   {testLoading === 'reminder' ? '⏳' : '🔔 Reminder'}
                 </button>
                 <button onClick={() => testMailSenden('gutschein', profile.email ?? settings.admin_email)} disabled={testLoading !== null}
-                  style={{ ...btnSm, background: testLoading === 'gutschein' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'gutschein' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
+                  style={{ ...btnSm, background: testLoading === 'gutschein' ? '#f3f4f6' : 'var(--primary-light)', color: testLoading === 'gutschein' ? '#9ca3af' : 'var(--primary)', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
                   {testLoading === 'gutschein' ? '⏳' : '🎫 Gutschein'}
                 </button>
                 <button onClick={() => testMailSenden('zuweisung', profile.email ?? settings.admin_email)} disabled={testLoading !== null}
-                  style={{ ...btnSm, background: testLoading === 'zuweisung' ? '#f3f4f6' : '#e8f5ee', color: testLoading === 'zuweisung' ? '#9ca3af' : '#0d631b', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
+                  style={{ ...btnSm, background: testLoading === 'zuweisung' ? '#f3f4f6' : 'var(--primary-light)', color: testLoading === 'zuweisung' ? '#9ca3af' : 'var(--primary)', padding:'10px 8px', fontSize:11, borderRadius:10 }}>
                   {testLoading === 'zuweisung' ? '⏳' : '📋 Zuweisung'}
                 </button>
               </div>
@@ -615,22 +627,22 @@ export default function Verwaltung({ profile }: Props) {
           <div style={{ background:'#fff', borderRadius:16, padding:16, border:'1px solid #f3f4f6' }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
               <div style={{ display:'flex', alignItems:'center', gap:6, cursor: evStep === 2 ? 'pointer' : 'default' }} onClick={() => evStep === 2 && setEvStep(1)}>
-                <div style={{ width:24, height:24, borderRadius:'50%', background: evStep === 1 ? '#0d631b' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <span style={{ fontSize:11, fontWeight:900, color: evStep === 1 ? '#fff' : '#0d631b' }}>1</span>
+                <div style={{ width:24, height:24, borderRadius:'50%', background: evStep === 1 ? 'var(--primary)' : 'var(--primary-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <span style={{ fontSize:11, fontWeight:900, color: evStep === 1 ? '#fff' : 'var(--primary)' }}>1</span>
                 </div>
-                <span style={{ fontSize:12, fontWeight: evStep === 1 ? 700 : 400, color: evStep === 1 ? '#0d631b' : '#9ca3af', fontFamily:'Lexend,sans-serif' }}>Veranstaltung</span>
+                <span style={{ fontSize:12, fontWeight: evStep === 1 ? 700 : 400, color: evStep === 1 ? 'var(--primary)' : '#9ca3af', fontFamily:'Lexend,sans-serif' }}>Veranstaltung</span>
               </div>
-              <div style={{ flex:1, height:2, background: evStep === 2 ? '#0d631b' : '#e5e7eb', borderRadius:2 }} />
+              <div style={{ flex:1, height:2, background: evStep === 2 ? 'var(--primary)' : '#e5e7eb', borderRadius:2 }} />
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <div style={{ width:24, height:24, borderRadius:'50%', background: evStep === 2 ? '#0d631b' : '#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <div style={{ width:24, height:24, borderRadius:'50%', background: evStep === 2 ? 'var(--primary)' : '#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                   <span style={{ fontSize:11, fontWeight:900, color: evStep === 2 ? '#fff' : '#9ca3af' }}>2</span>
                 </div>
-                <span style={{ fontSize:12, fontWeight: evStep === 2 ? 700 : 400, color: evStep === 2 ? '#0d631b' : '#9ca3af', fontFamily:'Lexend,sans-serif' }}>Schichten</span>
+                <span style={{ fontSize:12, fontWeight: evStep === 2 ? 700 : 400, color: evStep === 2 ? 'var(--primary)' : '#9ca3af', fontFamily:'Lexend,sans-serif' }}>Schichten</span>
               </div>
             </div>
             {evStep === 2 && activeEvName && (
               <p style={{ fontSize:11, color:'#9ca3af', marginTop:4 }}>
-                Veranstaltung: <strong style={{ color:'#0d631b' }}>{activeEvName}</strong>
+                Veranstaltung: <strong style={{ color:'var(--primary)' }}>{activeEvName}</strong>
                 <button onClick={() => setEvStep(1)} style={{ marginLeft:8, background:'none', border:'none', color:'#9ca3af', fontSize:11, cursor:'pointer', textDecoration:'underline' }}>ändern</button>
               </p>
             )}
@@ -644,10 +656,7 @@ export default function Verwaltung({ profile }: Props) {
                   <F label="Name"><input style={inp} value={newEv.name} onChange={e=>setNewEv({...newEv,name:e.target.value})} placeholder="z.B. Sommerfest 2025"/></F>
                   <F label="Kategorie / Banner">
                     <select style={inp} value={newEv.kategorie} onChange={e=>setNewEv({...newEv,kategorie:e.target.value})}>
-                      <option value="heimspiel">⚽ Heimspiel</option>
-                      <option value="vereinsfest">🎉 Vereinsfest</option>
-                      <option value="flag-football">🏈 Flag-Football</option>
-                      <option value="turnier">🏆 Turnier</option>
+                      {typen.map(t => <option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
                     </select>
                   </F>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -667,7 +676,7 @@ export default function Verwaltung({ profile }: Props) {
                         <p style={{ fontSize:10, color:'#9ca3af' }}>{new Date(ev.datum).toLocaleDateString('de-DE')} · {ev.schichten.length} Schichten</p>
                       </div>
                       <div style={{ display:'flex', gap:6 }}>
-                        <button onClick={() => { setActiveEvId(ev.id); setActiveEvName(ev.name); setNewSh(prev => ({ ...prev, veranstaltung_id: ev.id })); setEvStep(2) }} style={{ ...btnSm, background:'#e8f5ee', color:'#0d631b', fontSize:11 }}>Schichten</button>
+                        <button onClick={() => { setActiveEvId(ev.id); setActiveEvName(ev.name); setNewSh(prev => ({ ...prev, veranstaltung_id: ev.id })); setEvStep(2) }} style={{ ...btnSm, background:'var(--primary-light)', color:'var(--primary)', fontSize:11 }}>Schichten</button>
                         <button onClick={() => deleteVeranstaltung(ev)} style={{ width:32, height:32, borderRadius:8, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                           <span className="material-symbols-outlined" style={{ fontSize:16, color:'#ef4444' }}>delete</span>
                         </button>
@@ -683,23 +692,23 @@ export default function Verwaltung({ profile }: Props) {
             <>
               {/* Assistent */}
               {assistStep === 0 && vorlagen.filter(v => v.event_typ === newEv.kategorie).length > 0 && activeEv?.schichten.length === 0 && (
-                <div style={{ background:'#e8f5ee', borderRadius:16, padding:16, border:'1px solid #c6e6d4' }}>
+                <div style={{ background:'var(--primary-light)', borderRadius:16, padding:16, border:'1px solid #c6e6d4' }}>
                   <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize:20, color:'#0d631b', marginTop:1 }}>auto_awesome</span>
+                    <span className="material-symbols-outlined" style={{ fontSize:20, color:'var(--primary)', marginTop:1 }}>auto_awesome</span>
                     <div style={{ flex:1 }}>
-                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:13, color:'#0d631b', marginBottom:4 }}>Vorlage verwenden?</p>
-                      <p style={{ fontSize:12, color:'#0d631b', marginBottom:10 }}>Es gibt Vorlagen für diesen Event-Typ. Schichten automatisch anlegen lassen?</p>
+                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:13, color:'var(--primary)', marginBottom:4 }}>Vorlage verwenden?</p>
+                      <p style={{ fontSize:12, color:'var(--primary)', marginBottom:10 }}>Es gibt Vorlagen für diesen Event-Typ. Schichten automatisch anlegen lassen?</p>
                       <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                         {vorlagen.filter(v => v.event_typ === newEv.kategorie).map(v => (
                           <button key={v.id} onClick={() => {
                             setAssistVorlage(v)
                             setAssistPreview((v.schicht_vorlagen_positionen ?? []) as any)
                             setAssistStep(1)
-                          }} style={{ ...btnSm, background:'#0d631b', color:'#fff', fontSize:12, textAlign:'left', padding:'8px 12px' }}>
+                          }} style={{ ...btnSm, background:'var(--primary)', color:'#fff', fontSize:12, textAlign:'left', padding:'8px 12px' }}>
                             ✦ {v.name} ({(v.schicht_vorlagen_positionen as any)?.length ?? 0} Schichten)
                           </button>
                         ))}
-                        <button onClick={() => setAssistStep(3)} style={{ ...btnSm, background:'transparent', color:'#0d631b', fontSize:11, textAlign:'left', padding:'4px 0' }}>
+                        <button onClick={() => setAssistStep(3)} style={{ ...btnSm, background:'transparent', color:'var(--primary)', fontSize:11, textAlign:'left', padding:'4px 0' }}>
                           Nein danke, manuell anlegen →
                         </button>
                       </div>
@@ -775,8 +784,8 @@ export default function Verwaltung({ profile }: Props) {
                           </div>
                         </div>
                         <div style={{ display:'flex', gap:6, marginLeft:10, flexShrink:0 }}>
-                          <button onClick={() => openEditSchicht(s)} style={{ width:28, height:28, borderRadius:6, border:'none', background:'#e8f5ee', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize:14, color:'#0d631b' }}>edit</span>
+                          <button onClick={() => openEditSchicht(s)} style={{ width:28, height:28, borderRadius:6, border:'none', background:'var(--primary-light)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize:14, color:'var(--primary)' }}>edit</span>
                           </button>
                           <button onClick={() => deleteSchicht(s)} style={{ width:28, height:28, borderRadius:6, border:'none', background:'#fef2f2', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                             <span className="material-symbols-outlined" style={{ fontSize:14, color:'#ef4444' }}>delete</span>
@@ -822,10 +831,7 @@ export default function Verwaltung({ profile }: Props) {
               <F label="Name"><input style={inp} value={newVorlage.name} onChange={e => setNewVorlage({...newVorlage, name: e.target.value})} placeholder="z.B. Standard Heimspiel" /></F>
               <F label="Event-Typ">
                 <select style={inp} value={newVorlage.event_typ} onChange={e => setNewVorlage({...newVorlage, event_typ: e.target.value})}>
-                  <option value="heimspiel">⚽ Heimspiel</option>
-                  <option value="vereinsfest">🎉 Vereinsfest</option>
-                  <option value="turnier">🏆 Turnier</option>
-                  <option value="flag-football">🏈 Flag-Football</option>
+                  {typen.map(t => <option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
                 </select>
               </F>
               <button style={btnPrimary} onClick={addVorlage}>Vorlage anlegen →</button>
@@ -840,13 +846,13 @@ export default function Verwaltung({ profile }: Props) {
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <div style={{ cursor:'pointer', flex:1 }} onClick={() => setAktiveVorlage(aktiveVorlage?.id === v.id ? null : v)}>
                       <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
-                        {v.event_typ === 'heimspiel' ? '⚽' : v.event_typ === 'vereinsfest' ? '🎉' : v.event_typ === 'turnier' ? '🏆' : '🏈'} {v.name}
+                        {getBanner(typen, v.event_typ).icon} {v.name}
                       </p>
                       <p style={{ fontSize:11, color:'#9ca3af' }}>{(v.schicht_vorlagen_positionen as any)?.length ?? 0} Schicht-Positionen</p>
                     </div>
                     <div style={{ display:'flex', gap:6 }}>
                       <button onClick={() => setAktiveVorlage(aktiveVorlage?.id === v.id ? null : v)}
-                        style={{ ...btnSm, background:'#e8f5ee', color:'#0d631b', fontSize:11 }}>
+                        style={{ ...btnSm, background:'var(--primary-light)', color:'var(--primary)', fontSize:11 }}>
                         {aktiveVorlage?.id === v.id ? 'Schließen' : 'Bearbeiten'}
                       </button>
                       <button onClick={() => deleteVorlage(v.id)}
@@ -949,8 +955,8 @@ export default function Verwaltung({ profile }: Props) {
           <Section title={`Aktuelle Kategorien (${kategorien.length})`}>
             {kategorien.length === 0 ? <Empty text="Noch keine Kategorien angelegt." /> : kategorien.map(k => (
               <div key={k.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                <div style={{ width:32, height:32, borderRadius:8, background:'#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize:16, color:'#0d631b' }}>label</span>
+                <div style={{ width:32, height:32, borderRadius:8, background:'var(--primary-light)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize:16, color:'var(--primary)' }}>label</span>
                 </div>
                 <div style={{ flex:1 }}><p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{k.name}</p><p style={{ fontSize:10, color:'#9ca3af' }}>{k.schichten_count ?? 0} Schichten</p></div>
                 <button onClick={() => deleteKategorie(k)} disabled={(k.schichten_count ?? 0) > 0}
@@ -976,7 +982,7 @@ export default function Verwaltung({ profile }: Props) {
               <div key={r.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
                 <div><p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{r.label}</p><p style={{ fontSize:11, color:'#9ca3af' }}>{r.sub}</p></div>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <input type="number" min="0" value={settings[r.key] as number} onChange={e => setSettings({...settings, [r.key]: parseInt(e.target.value)||0})} style={{ width:60, textAlign:'center', border:'1.5px solid #e5e7eb', borderRadius:8, padding:'6px', fontSize:14, fontWeight:900, color:'#0d631b', fontFamily:'Lexend,sans-serif', outline:'none' }} />
+                  <input type="number" min="0" value={settings[r.key] as number} onChange={e => setSettings({...settings, [r.key]: parseInt(e.target.value)||0})} style={{ width:60, textAlign:'center', border:'1.5px solid #e5e7eb', borderRadius:8, padding:'6px', fontSize:14, fontWeight:900, color:'var(--primary)', fontFamily:'Lexend,sans-serif', outline:'none' }} />
                   <span style={{ fontSize:11, color:'#9ca3af' }}>Pkt</span>
                 </div>
               </div>
@@ -1024,8 +1030,8 @@ export default function Verwaltung({ profile }: Props) {
               ).length > 0
               return (
                 <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb', opacity: bestaetigt ? 1 : 0.5 }}>
-                  <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : '#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : '#0d631b' }}>{(m.name || m.display_name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}</span>
+                  <div style={{ width:34, height:34, borderRadius:'50%', background: (m as any).is_temp ? '#e8f0fe' : 'var(--primary-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color: (m as any).is_temp ? '#1a3a7a' : 'var(--primary)' }}>{(m.name || m.display_name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}</span>
                   </div>
                   <div style={{ flex:1 }}>
                     <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>
@@ -1038,7 +1044,7 @@ export default function Verwaltung({ profile }: Props) {
                   </div>
                   <div style={{ display:'flex', gap:6 }}>
                     <button onClick={() => loadUserProfil(m)} style={{ ...btnSm, background:'#f3f4f6', color:'#374151', fontSize:11 }}>Profil</button>
-                    <button onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }} style={{ ...btnSm, background: selectedUser?.id === m.id ? '#0d631b' : '#e8f5ee', color: selectedUser?.id === m.id ? '#fff' : '#0d631b', fontSize:11 }}>{selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}</button>
+                    <button onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }} style={{ ...btnSm, background: selectedUser?.id === m.id ? 'var(--primary)' : 'var(--primary-light)', color: selectedUser?.id === m.id ? '#fff' : 'var(--primary)', fontSize:11 }}>{selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}</button>
                     {!bestaetigt && (
                       <button onClick={() => setLoeschenUserId(m.id)} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Löschen</button>
                     )}
@@ -1056,13 +1062,13 @@ export default function Verwaltung({ profile }: Props) {
                 return (
                   <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
                     <div>
-                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{schichtName(s, allSchichten)}{istZugewiesen && <span style={{ marginLeft:6, fontSize:9, background:'#e8f5ee', color:'#0d631b', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>✓ Dabei</span>}</p>
+                      <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{schichtName(s, allSchichten)}{istZugewiesen && <span style={{ marginLeft:6, fontSize:9, background:'var(--primary-light)', color:'var(--primary)', padding:'1px 6px', borderRadius:99, fontWeight:900 }}>✓ Dabei</span>}</p>
                       <p style={{ fontSize:10, color:'#9ca3af' }}>{(s as any).veranstaltungen?.name} · {s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)} · {s.belegt}/{s.plaetze} belegt</p>
                     </div>
                     {istZugewiesen ? (
                       <button onClick={() => { removeAssignment(selectedUser!, s); setUserBelegungen(prev => prev.filter(id => id !== s.id)) }} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Entfernen</button>
                     ) : (
-                      <button onClick={() => { assignSchicht(selectedUser!, s); if (!voll) setUserBelegungen(prev => [...prev, s.id]) }} disabled={voll} style={{ ...btnSm, background: voll ? '#f3f4f6' : '#0d631b', color: voll ? '#9ca3af' : '#fff', fontSize:11, cursor: voll ? 'not-allowed' : 'pointer' }}>{voll ? 'Voll' : '+ Zuweisen'}</button>
+                      <button onClick={() => { assignSchicht(selectedUser!, s); if (!voll) setUserBelegungen(prev => [...prev, s.id]) }} disabled={voll} style={{ ...btnSm, background: voll ? '#f3f4f6' : 'var(--primary)', color: voll ? '#9ca3af' : '#fff', fontSize:11, cursor: voll ? 'not-allowed' : 'pointer' }}>{voll ? 'Voll' : '+ Zuweisen'}</button>
                     )}
                   </div>
                 )
@@ -1082,8 +1088,8 @@ export default function Verwaltung({ profile }: Props) {
 
             {/* Header */}
             <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20, paddingBottom:16, borderBottom:'1px solid #f3f4f6' }}>
-              <div style={{ width:44, height:44, borderRadius:'50%', background:'#e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:13, color:'#0d631b' }}>
+              <div style={{ width:44, height:44, borderRadius:'50%', background:'var(--primary-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:13, color:'var(--primary)' }}>
                   {(profilUser.name || profilUser.display_name)?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
                 </span>
               </div>
@@ -1120,7 +1126,7 @@ export default function Verwaltung({ profile }: Props) {
                       { val: `${gesamtPunkte} Pkt`, label:'Punkte gesamt' },
                     ].map(s => (
                       <div key={s.label} style={{ background:'#f8faf8', borderRadius:12, padding:'12px 10px', textAlign:'center', border:'1px solid #f3f4f6' }}>
-                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:18, color:'#0d631b' }}>{s.val}</p>
+                        <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:18, color:'var(--primary)' }}>{s.val}</p>
                         <p style={{ fontSize:10, color:'#9ca3af', fontWeight:700, marginTop:2, textTransform:'uppercase', letterSpacing:'.04em' }}>{s.label}</p>
                       </div>
                     ))}
@@ -1132,7 +1138,7 @@ export default function Verwaltung({ profile }: Props) {
                       <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>Häufigste Kategorien</p>
                       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                         {topKat.map(([kat, count]) => (
-                          <span key={kat} style={{ background:'#e8f5ee', color:'#0d631b', fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:99 }}>
+                          <span key={kat} style={{ background:'var(--primary-light)', color:'var(--primary)', fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:99 }}>
                             {kat} · {count}×
                           </span>
                         ))}
@@ -1148,14 +1154,14 @@ export default function Verwaltung({ profile }: Props) {
                       </p>
                       {kommend.map(s => (
                         <div key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
-                          <div style={{ width:8, height:8, borderRadius:'50%', background:'#0d631b', flexShrink:0 }} />
+                          <div style={{ width:8, height:8, borderRadius:'50%', background:'var(--primary)', flexShrink:0 }} />
                           <div style={{ flex:1 }}>
                             <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13 }}>{s.kategorie_name}</p>
                             <p style={{ fontSize:11, color:'#9ca3af' }}>
                               {s.veranstaltung_name} · {new Date(s.startzeit_ts).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' })} · {s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)}
                             </p>
                           </div>
-                          <span style={{ fontSize:11, fontWeight:700, color:'#0d631b', background:'#e8f5ee', padding:'2px 8px', borderRadius:99 }}>+{s.punkte} Pkt</span>
+                          <span style={{ fontSize:11, fontWeight:700, color:'var(--primary)', background:'var(--primary-light)', padding:'2px 8px', borderRadius:99 }}>+{s.punkte} Pkt</span>
                         </div>
                       ))}
                     </div>
@@ -1226,7 +1232,7 @@ export default function Verwaltung({ profile }: Props) {
             </div>
             <div style={{ display:'flex', gap:10, marginTop:20 }}>
               <button onClick={() => setEditSchicht(null)} style={{ flex:1, padding:'12px', borderRadius:12, border:'1px solid #e5e7eb', background:'none', fontSize:13, cursor:'pointer', color:'#555' }}>Abbrechen</button>
-              <button onClick={saveEditSchicht} disabled={editLoading} style={{ flex:2, padding:'12px', borderRadius:12, border:'none', background:'#0d631b', color:'#fff', fontSize:13, fontWeight:700, cursor:editLoading?'not-allowed':'pointer', fontFamily:'Lexend,sans-serif', opacity:editLoading?.7:1 }}>
+              <button onClick={saveEditSchicht} disabled={editLoading} style={{ flex:2, padding:'12px', borderRadius:12, border:'none', background:'var(--primary)', color:'#fff', fontSize:13, fontWeight:700, cursor:editLoading?'not-allowed':'pointer', fontFamily:'Lexend,sans-serif', opacity:editLoading?.7:1 }}>
                 {editLoading ? 'Wird gespeichert...' : '✅ Speichern'}
               </button>
             </div>
@@ -1260,12 +1266,12 @@ function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (<div style={{ marginBottom:2 }}><label style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:5 }}>{label}</label>{children}</div>)
 }
 function InfoBox({ text }: { text: string }) {
-  return (<div style={{ background:'#e8f5ee', borderRadius:12, padding:'10px 14px', display:'flex', gap:8 }}><span className="material-symbols-outlined" style={{ fontSize:16, color:'#0d631b', marginTop:1 }}>info</span><p style={{ fontSize:12, color:'#0d631b', fontWeight:500, lineHeight:1.5 }}>{text}</p></div>)
+  return (<div style={{ background:'var(--primary-light)', borderRadius:12, padding:'10px 14px', display:'flex', gap:8 }}><span className="material-symbols-outlined" style={{ fontSize:16, color:'var(--primary)', marginTop:1 }}>info</span><p style={{ fontSize:12, color:'var(--primary)', fontWeight:500, lineHeight:1.5 }}>{text}</p></div>)
 }
 function Empty({ text }: { text: string }) {
   return <p style={{ textAlign:'center', padding:'20px 0', color:'#9ca3af', fontSize:13 }}>{text}</p>
 }
 
 const inp: React.CSSProperties = { width:'100%', padding:'10px 12px', border:'1.5px solid #e5e7eb', borderRadius:10, fontSize:13, fontFamily:'Manrope,sans-serif', outline:'none', background:'#fff' }
-const btnPrimary: React.CSSProperties = { width:'100%', padding:12, background:'#0d631b', color:'#fff', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:13, cursor:'pointer' }
+const btnPrimary: React.CSSProperties = { width:'100%', padding:12, background:'var(--primary)', color:'#fff', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:13, cursor:'pointer' }
 const btnSm: React.CSSProperties = { padding:'6px 12px', border:'none', borderRadius:8, fontSize:12, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif' }

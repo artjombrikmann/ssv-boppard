@@ -35,7 +35,7 @@ export default function NotificationToggle({ userId }: Props) {
             onClick={subscribed ? unsubscribe : subscribe}
             style={{
               width: 48, height: 26, borderRadius: 99,
-              background: subscribed ? '#0d631b' : '#e5e7eb',
+              background: subscribed ? 'var(--primary)' : '#e5e7eb',
               position: 'relative', cursor: 'pointer',
               transition: 'background .2s', flexShrink: 0, marginLeft: 12,
             }}

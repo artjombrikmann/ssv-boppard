@@ -217,7 +217,7 @@ export default function Profil({ profile, mitgliedschaft, onProfileUpdate, onMit
 
       {/* FIX: Erfolgsmeldung angepasst – kein Admin-Schritt mehr nötig */}
       {done && (
-        <div style={{ background: "#e8f5ee", color: "#1a7a4a", padding: "10px 14px", borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+        <div style={{ background: "var(--primary-light)", color: "#1a7a4a", padding: "10px 14px", borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
           ✅ Gutschein wird vorbereitet – der Admin bringt ihn dir mit!
         </div>
       )}

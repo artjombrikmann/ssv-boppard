@@ -16,6 +16,19 @@ export interface Verein {
   vertretung: string | null
 }
 
+/** Event-Typ eines Vereins (Tabelle event_typen). */
+export interface EventTyp {
+  id: string
+  verein_id: string
+  key: string
+  label: string
+  sort: number
+  farbe: string | null
+  icon?: string | null
+  verlauf?: string | null
+  deko?: boolean | null
+}
+
 /** Mitgliedschaft eines Kontos in EINEM Verein: Rolle, Punkte, Einwilligungen. */
 export interface Mitgliedschaft {
   user_id: string

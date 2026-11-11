@@ -107,15 +107,15 @@ export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden
 
       <div>
         <h1 style={{ fontFamily:'Lexend,sans-serif', fontWeight:800, fontSize:22 }}>Punkte einlösen</h1>
-        <p style={{ color:'#5d5e61', fontSize:13, marginTop:2 }}>Dein Guthaben: <strong style={{ color:'#0d631b' }}>{punkte.toLocaleString('de')} Pkt</strong></p>
+        <p style={{ color:'#5d5e61', fontSize:13, marginTop:2 }}>Dein Guthaben: <strong style={{ color:'var(--primary)' }}>{punkte.toLocaleString('de')} Pkt</strong></p>
       </div>
 
       {/* Erfolg Banner */}
       {success && (
-        <div style={{ background:'#e8f5ee', borderRadius:14, padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
-          <span className="material-symbols-outlined icon-fill" style={{ fontSize:20, color:'#0d631b' }}>check_circle</span>
+        <div style={{ background:'var(--primary-light)', borderRadius:14, padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
+          <span className="material-symbols-outlined icon-fill" style={{ fontSize:20, color:'var(--primary)' }}>check_circle</span>
           <div>
-            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13, color:'#0d631b' }}>Anfrage gesendet!</p>
+            <p style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:13, color:'var(--primary)' }}>Anfrage gesendet!</p>
             <p style={{ fontSize:11, color:'#5d5e61', marginTop:2 }}>Die Punkte wurden abgezogen. Die Geschäftsführung wurde per E-Mail benachrichtigt.</p>
           </div>
         </div>
@@ -154,7 +154,7 @@ export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden
                 <p style={{ fontSize:12, color:'#5d5e61', lineHeight:1.5, marginBottom:12 }}>{a.beschreibung}</p>
                 {hatPunkte ? (
                   <button onClick={() => setSelected(a)}
-                    style={{ width:'100%', padding:12, background:'#0d631b', color:'#fff', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:13, cursor:'pointer' }}>
+                    style={{ width:'100%', padding:12, background:'var(--primary)', color:'#fff', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:13, cursor:'pointer' }}>
                     Jetzt einlösen
                   </button>
                 ) : (
@@ -182,7 +182,7 @@ export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden
             <div style={{ background:'#f8faf8', borderRadius:12, padding:14, marginBottom:16 }}>
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, padding:'6px 0', borderBottom:'1px solid #f3f4f6' }}>
                 <span style={{ color:'#9ca3af' }}>Kosten</span>
-                <span style={{ fontWeight:700, color:'#0d631b' }}>{selected.punkte} Punkte</span>
+                <span style={{ fontWeight:700, color:'var(--primary)' }}>{selected.punkte} Punkte</span>
               </div>
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, padding:'6px 0', borderBottom:'1px solid #f3f4f6' }}>
                 <span style={{ color:'#9ca3af' }}>Dein Guthaben</span>
@@ -190,19 +190,19 @@ export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden
               </div>
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, padding:'6px 0' }}>
                 <span style={{ fontWeight:700, color:'#9ca3af' }}>Nach Einlösung</span>
-                <span style={{ fontWeight:900, color:'#0d631b' }}>{(punkte - selected.punkte).toLocaleString('de')} Punkte</span>
+                <span style={{ fontWeight:900, color:'var(--primary)' }}>{(punkte - selected.punkte).toLocaleString('de')} Punkte</span>
               </div>
             </div>
 
-            <div style={{ background:'#e8f5ee', borderRadius:10, padding:'10px 14px', marginBottom:16, display:'flex', gap:8 }}>
-              <span className="material-symbols-outlined" style={{ fontSize:16, color:'#0d631b' }}>mail</span>
-              <p style={{ fontSize:11, color:'#0d631b', fontWeight:500, lineHeight:1.5 }}>
+            <div style={{ background:'var(--primary-light)', borderRadius:10, padding:'10px 14px', marginBottom:16, display:'flex', gap:8 }}>
+              <span className="material-symbols-outlined" style={{ fontSize:16, color:'var(--primary)' }}>mail</span>
+              <p style={{ fontSize:11, color:'var(--primary)', fontWeight:500, lineHeight:1.5 }}>
                 Eine E-Mail wird automatisch an die Geschäftsführung gesendet. Deine Punkte werden sofort abgezogen.
               </p>
             </div>
 
             <button onClick={() => einloesen(selected)} disabled={sending}
-              style={{ width:'100%', padding:14, background:'#0d631b', color:'#fff', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:14, cursor:'pointer', marginBottom:10 }}>
+              style={{ width:'100%', padding:14, background:'var(--primary)', color:'#fff', border:'none', borderRadius:12, fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:14, cursor:'pointer', marginBottom:10 }}>
               {sending ? 'Wird verarbeitet...' : 'Jetzt einlösen & E-Mail senden'}
             </button>
             <button onClick={() => setSelected(null)}

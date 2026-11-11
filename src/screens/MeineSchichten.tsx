@@ -46,14 +46,14 @@ export default function MeineSchichten({ profile, onTabChange }: Props) {
 
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-        <div style={{ background:'#0d631b', borderRadius:16, padding:14, color:'#fff' }}>
+        <div style={{ background:'var(--primary)', borderRadius:16, padding:14, color:'#fff' }}>
           <span className="material-symbols-outlined icon-fill" style={{ fontSize:22, opacity:.8 }}>calendar_today</span>
           <p style={{ fontFamily:'Lexend,sans-serif', fontSize:22, fontWeight:900, marginTop:4 }}>{kommend.length}</p>
           <p style={{ fontSize:10, fontWeight:800, opacity:.8, textTransform:'uppercase', letterSpacing:'.06em' }}>Kommende</p>
         </div>
         <div style={{ background:'#fff', borderRadius:16, padding:14, border:'1px solid #f3f4f6' }}>
-          <span className="material-symbols-outlined icon-fill" style={{ fontSize:22, color:'#0d631b' }}>workspace_premium</span>
-          <p style={{ fontFamily:'Lexend,sans-serif', fontSize:22, fontWeight:900, marginTop:4, color:'#0d631b' }}>{gesamtPunkte}</p>
+          <span className="material-symbols-outlined icon-fill" style={{ fontSize:22, color:'var(--primary)' }}>workspace_premium</span>
+          <p style={{ fontFamily:'Lexend,sans-serif', fontSize:22, fontWeight:900, marginTop:4, color:'var(--primary)' }}>{gesamtPunkte}</p>
           <p style={{ fontSize:10, fontWeight:800, color:'#5d5e61', textTransform:'uppercase', letterSpacing:'.06em' }}>Verdiente Pkt</p>
         </div>
       </div>
@@ -62,7 +62,7 @@ export default function MeineSchichten({ profile, onTabChange }: Props) {
       <div style={{ display:'flex', gap:4, background:'#eceeec', borderRadius:14, padding:4 }}>
         {(['kommend', 'vergangen'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            style={{ flex:1, padding:'8px 0', borderRadius:10, border:'none', background: tab===t ? '#fff' : 'transparent', color: tab===t ? '#0d631b' : '#5d5e61', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:12, cursor:'pointer', boxShadow: tab===t ? '0 1px 4px rgba(0,0,0,.08)' : 'none', transition:'all .15s' }}>
+            style={{ flex:1, padding:'8px 0', borderRadius:10, border:'none', background: tab===t ? '#fff' : 'transparent', color: tab===t ? 'var(--primary)' : '#5d5e61', fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:12, cursor:'pointer', boxShadow: tab===t ? '0 1px 4px rgba(0,0,0,.08)' : 'none', transition:'all .15s' }}>
             {t === 'kommend' ? `Kommend (${kommend.length})` : `Vergangen (${vergangen.length})`}
           </button>
         ))}
@@ -81,7 +81,7 @@ export default function MeineSchichten({ profile, onTabChange }: Props) {
           </p>
           {tab === 'kommend' && (
             <button onClick={() => onTabChange('marktplatz')}
-              style={{ marginTop:12, background:'#0d631b', color:'#fff', border:'none', borderRadius:10, padding:'8px 16px', fontSize:12, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>
+              style={{ marginTop:12, background:'var(--primary)', color:'#fff', border:'none', borderRadius:10, padding:'8px 16px', fontSize:12, fontWeight:900, cursor:'pointer', fontFamily:'Lexend,sans-serif' }}>
               Zum Marktplatz →
             </button>
           )}
@@ -101,16 +101,16 @@ function SchichtCard({ booking: b, tab, onAbmelden }: { booking: Schichtbelegung
   const [confirm, setConfirm] = useState(false)
 
   return (
-    <div style={{ background:'#fff', borderRadius:16, border: tab === 'kommend' ? '1px solid #e8f5ee' : '1px solid #f3f4f6', overflow:'hidden' }}>
+    <div style={{ background:'#fff', borderRadius:16, border: tab === 'kommend' ? '1px solid var(--primary-light)' : '1px solid #f3f4f6', overflow:'hidden' }}>
       <div style={{ padding:'14px 16px' }}>
         <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-          <div style={{ width:48, height:48, background:'#e8f5ee', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', borderBottom:'3px solid #0d631b', flexShrink:0 }}>
-            <span className="material-symbols-outlined icon-fill" style={{ fontSize:22, color:'#0d631b' }}>event</span>
+          <div style={{ width:48, height:48, background:'var(--primary-light)', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', borderBottom:'3px solid var(--primary)', flexShrink:0 }}>
+            <span className="material-symbols-outlined icon-fill" style={{ fontSize:22, color:'var(--primary)' }}>event</span>
           </div>
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <h3 style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:14 }}>{b.schichten?.kategorien?.name ?? b.schichten?.bezeichnung ?? 'Schicht'}</h3>
-              <span style={{ background:'#e8f5ee', color:'#0d631b', fontSize:10, fontWeight:900, padding:'2px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
+              <span style={{ background:'var(--primary-light)', color:'var(--primary)', fontSize:10, fontWeight:900, padding:'2px 8px', borderRadius:99, fontFamily:'Lexend,sans-serif' }}>
                 +{b.schichten?.punkte} Pkt
               </span>
             </div>
@@ -125,7 +125,7 @@ function SchichtCard({ booking: b, tab, onAbmelden }: { booking: Schichtbelegung
 
       <div style={{ padding:'10px 16px 14px', borderTop:'1px solid #f9fafb', display:'flex', gap:8 }}>
         {b.punkte_vergeben ? (
-          <span style={{ flex:1, textAlign:'center', background:'#e8f5ee', color:'#0d631b', fontSize:11, fontWeight:900, padding:'8px', borderRadius:10, fontFamily:'Lexend,sans-serif' }}>
+          <span style={{ flex:1, textAlign:'center', background:'var(--primary-light)', color:'var(--primary)', fontSize:11, fontWeight:900, padding:'8px', borderRadius:10, fontFamily:'Lexend,sans-serif' }}>
             ✓ Punkte vergeben
           </span>
         ) : (
