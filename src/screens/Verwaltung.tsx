@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
+import { Profile, Mitgliedschaft, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
 
-interface Props { profile: Profile; onTabChange: (tab: string) => void }
+interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void }
 type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv' | 'vorlagen'
 
 interface VeranstaltungMitAuslastung extends Veranstaltung {

@@ -1,20 +1,26 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile } from '../types'
+import { Profile, Mitgliedschaft } from '../types'
 
-interface Props { profile: Profile; onTabChange: (tab: string) => void }
+interface Props { profile: Profile; mitgliedschaft: Mitgliedschaft; onTabChange: (tab: string) => void }
 
-export default function Rangliste({ profile }: Props) {
-  const [members, setMembers] = useState<Profile[]>([])
+// Eintrag der Rangliste-RPC (nur Mitglieder mit Einwilligung, ohne Gäste)
+interface Platz { id: string; name: string; punkte: number; schichten_count: number }
+
+export default function Rangliste({ profile, mitgliedschaft }: Props) {
+  const [members, setMembers] = useState<Platz[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     supabase
-      .from('profiles')
-      .select('id, name, punkte, schichten_count')
-      .order('punkte', { ascending: false })
-      .limit(5)
-      .then(({ data }) => { setMembers(data ?? []); setLoading(false) })
+      .rpc('rangliste', { p_verein: mitgliedschaft.verein_id })
+      .then(({ data }) => {
+        const top5 = ((data ?? []) as { user_id: string; display_name: string; punkte: number; schichten_count: number }[])
+          .slice(0, 5)
+          .map(m => ({ id: m.user_id, name: m.display_name, punkte: m.punkte, schichten_count: m.schichten_count }))
+        setMembers(top5)
+        setLoading(false)
+      })
   }, [])
 
   const top3    = members.slice(0, 3)
@@ -131,4 +137,4 @@ export default function Rangliste({ profile }: Props) {
       )}
     </div>
   )
-}
+}

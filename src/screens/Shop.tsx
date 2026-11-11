@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile, Einstellungen } from '../types'
+import { Profile, Einstellungen, Mitgliedschaft } from '../types'
 
-interface Props { profile: Profile; onTabChange: (tab: string) => void }
+interface Props {
+  profile: Profile
+  mitgliedschaft: Mitgliedschaft
+  onTabChange: (tab: string) => void
+  onMitgliedschaftNeuLaden: () => Promise<void>
+}
 
 interface Artikel {
   id: number
@@ -21,25 +26,31 @@ const ARTIKEL: Artikel[] = [
 
 const ADMIN_MAIL = 'geschaeftsfuehrung@ssv-boppard.de'
 
-export default function Shop({ profile }: Props) {
+export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden }: Props) {
   const [selected,  setSelected]  = useState<Artikel | null>(null)
   const [sending,   setSending]   = useState(false)
   const [success,   setSuccess]   = useState(false)
-  const [punkte,    setPunkte]    = useState(profile.punkte ?? 0)
+  const [punkte,    setPunkte]    = useState(mitgliedschaft.punkte ?? 0)
   const [settings,  setSettings]  = useState<Einstellungen | null>(null)
   const [fehler,    setFehler]    = useState('')
 
   useEffect(() => {
     supabase.from('einstellungen').select('*').single().then(({ data }) => { if (data) setSettings(data) })
     // Aktuellen Punktestand laden
-    supabase.from('profiles').select('punkte').eq('id', profile.id).single().then(({ data }) => {
-      if (data) setPunkte(data.punkte)
-    })
+    ladePunkte()
   }, [])
 
+  // Guthaben kommt aus der Mitgliedschaft dieses Vereins
+  async function holeGuthaben(): Promise<number | null> {
+    const { data } = await supabase.from('mitgliedschaften').select('punkte')
+      .eq('user_id', profile.id).eq('verein_id', mitgliedschaft.verein_id).single()
+    return data ? (data.punkte ?? 0) : null
+  }
+
   async function ladePunkte() {
-    const { data } = await supabase.from('profiles').select('punkte').eq('id', profile.id).single()
-    if (data) setPunkte(data.punkte ?? 0)
+    const g = await holeGuthaben()
+    if (g !== null) setPunkte(g)
+    await onMitgliedschaftNeuLaden()
   }
 
   async function einloesen(artikel: Artikel) {
@@ -50,8 +61,7 @@ export default function Shop({ profile }: Props) {
 
     try {
       // 1. Punkte abziehen (die RPC prüft das Guthaben nicht, daher vorher frisch aus der DB laden)
-      const { data: aktuell } = await supabase.from('profiles').select('punkte').eq('id', profile.id).single()
-      const guthaben = aktuell?.punkte ?? 0
+      const guthaben = (await holeGuthaben()) ?? 0
       if (guthaben < artikel.punkte) {
         setPunkte(guthaben)
         setFehler('Nicht genug Punkte.')
@@ -204,4 +214,4 @@ export default function Shop({ profile }: Props) {
       )}
     </div>
   )
-}
+}

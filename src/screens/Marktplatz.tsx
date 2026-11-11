@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile, Schicht, Kategorie, Veranstaltung } from '../types'
+import { Profile, Mitgliedschaft, Schicht, Kategorie, Veranstaltung } from '../types'
 import { getBanner } from '../eventBanner'
 
-interface Props { profile: Profile; onTabChange: (tab: string) => void }
+interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void }
 
 export default function Marktplatz({ profile }: Props) {
   const [schichten,       setSchichten]       = useState<Schicht[]>([])

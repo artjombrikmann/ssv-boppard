@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
-import { Profile } from './types'
+import { Profile, Mitgliedschaft } from './types'
 import './styles.css'
 import Login from './screens/Login'
 import Home from './screens/Home'
@@ -11,6 +11,10 @@ import Shop from './screens/Shop'
 import Verwaltung from './screens/Verwaltung'
 import Profil from './screens/Profil'
 import NotificationToggle from './components/NotificationToggle'
+import Beitreten from './screens/Beitreten'
+import PasswortNeu from './screens/PasswortNeu'
+import { beitrittNehmen } from './beitrittsDaten'
+import { useVerein } from './VereinContext'
 
 type TabId = 'home' | 'marktplatz' | 'meineschichten' | 'rangliste' | 'shop' | 'verwaltung' | 'profil'
 
@@ -33,8 +37,12 @@ const NAV_TABS = [
 ]
 
 export default function App() {
+  const verein = useVerein()
+  const kuerzel = verein.name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3).toUpperCase()
   const [session, setSession]                     = useState<any>(null)
   const [profile, setProfile]                     = useState<Profile | null>(null)
+  const [mitgliedschaft, setMitgliedschaft]       = useState<Mitgliedschaft | null>(null)
+  const [beitrittHinweis, setBeitrittHinweis]     = useState('')
   const [activeTab, setActiveTab]                 = useState<TabId>('home')
   const [loading, setLoading]                     = useState(true)
   const [showOverlay, setShowOverlay]             = useState(false)
@@ -44,25 +52,59 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      if (session) loadProfile(session.user.id)
+      if (session) loadProfile(session.user.id, session.user.email)
       else setLoading(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setSession(session)
-      if (session) loadProfile(session.user.id)
-      else { setProfile(null); setLoading(false) }
+      if (session) loadProfile(session.user.id, session.user.email)
+      else { setProfile(null); setMitgliedschaft(null); setBeitrittHinweis(''); setLoading(false) }
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  async function loadProfile(userId: string) {
+  async function loadProfile(userId: string, email?: string | null) {
     try {
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+      const [{ data }, { data: mg }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        supabase.from('mitgliedschaften').select('*').eq('user_id', userId).eq('verein_id', verein.id).maybeSingle(),
+      ])
       setProfile(data ?? null)
-      if (data) loadBenachrichtigungen()
+      let mitglied = (mg as Mitgliedschaft | null) ?? null
+
+      // Konto ohne Mitgliedschaft in diesem Verein: Hat die Registrierung Code und Einwilligungen
+      // gemerkt (E-Mail war schon bekannt), wird automatisch beigetreten. Sonst zeigt die App den Beitreten-Screen.
+      if (data && !mitglied) {
+        const offen = beitrittNehmen(verein.slug, email ?? data.email)
+        if (offen) {
+          const { data: erg, error } = await supabase.rpc('verein_beitreten', {
+            p_slug: verein.slug, p_code: offen.code, p_consents: offen.consents,
+          })
+          if (!error && (erg === 'ok' || erg === 'bereits_mitglied')) {
+            const { data: neu } = await supabase.from('mitgliedschaften').select('*')
+              .eq('user_id', userId).eq('verein_id', verein.id).maybeSingle()
+            mitglied = (neu as Mitgliedschaft | null) ?? null
+          } else {
+            setBeitrittHinweis(erg === 'gesperrt'
+              ? 'Zu viele Fehlversuche. Bitte warte eine Stunde und versuche es dann erneut.'
+              : 'Der Freischaltcode war nicht richtig. Bitte gib ihn hier noch einmal ein.')
+          }
+        }
+      }
+
+      setMitgliedschaft(mitglied)
+      if (data && mitglied) loadBenachrichtigungen()
     } finally {
       setLoading(false)
     }
+  }
+
+  // Punkte und Schichtzahl nach einer Aktion (Einlösen, Gutschein) frisch aus der Mitgliedschaft holen
+  async function mitgliedschaftNeuLaden() {
+    if (!session) return
+    const { data } = await supabase.from('mitgliedschaften').select('*')
+      .eq('user_id', session.user.id).eq('verein_id', verein.id).maybeSingle()
+    if (data) setMitgliedschaft(data as Mitgliedschaft)
   }
 
   async function loadBenachrichtigungen() {
@@ -95,6 +137,10 @@ export default function App() {
 
   const ungelesen = benachrichtigungen.filter(b => !b.gelesen).length
 
+  // Link aus der Reset-Mail: Der Nutzer ist durch den Link vorübergehend angemeldet.
+  // Diese Seite muss VOR dem Login/der Mitgliedschaftsprüfung greifen, sonst landet er in der App.
+  if (window.location.pathname === '/passwort-neu') return <PasswortNeu />
+
   function zeitFormatieren(iso: string) {
     const d = new Date(iso)
     return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -102,9 +148,11 @@ export default function App() {
 
   if (loading) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', gap:12 }}>
-      <img src="/LOGO-SSV-BOPPARD-_1_.png" alt="SSV Boppard" style={{ width:80, height:80, objectFit:'contain' }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
-      <p style={{ color:'#5d5e61', fontSize:14, fontFamily:'Manrope,sans-serif' }}>SSV Boppard wird geladen...</p>
+      {verein.logo_url && (
+        <img src={verein.logo_url} alt={verein.name} style={{ width:80, height:80, objectFit:'contain' }}
+          onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
+      )}
+      <p style={{ color:'#5d5e61', fontSize:14, fontFamily:'Manrope,sans-serif' }}>{verein.name} wird geladen...</p>
     </div>
   )
 
@@ -116,12 +164,26 @@ export default function App() {
     </div>
   )
 
-  const tabs = profile.is_admin
+  // Konto vorhanden, aber nicht Mitglied dieses Vereins (z. B. Konto aus einem anderen Verein):
+  // Beitreten mit Freischaltcode und Einwilligungen.
+  if (!mitgliedschaft) return (
+    <Beitreten
+      hinweis={beitrittHinweis}
+      onBeigetreten={async () => { setBeitrittHinweis(''); await loadProfile(session.user.id, session.user.email) }}
+      onLogout={handleLogout}
+    />
+  )
+
+  const tabs = mitgliedschaft.is_admin
     ? [...NAV_TABS, { id: 'verwaltung' as TabId, icon: 'shield', label: 'Admin' }]
     : NAV_TABS
 
   // FIX: onTabChange nutzt jetzt handleTabChange
-  const screenProps = { profile, onTabChange: (tab: string) => handleTabChange(tab as TabId) }
+  const screenProps = {
+    profile, mitgliedschaft, verein,
+    onTabChange: (tab: string) => handleTabChange(tab as TabId),
+    onMitgliedschaftNeuLaden: mitgliedschaftNeuLaden,
+  }
 
   return (
     <div style={{ maxWidth:680, margin:'0 auto', minHeight:'100vh', background:'#f8faf8', position:'relative' }}>
@@ -136,15 +198,19 @@ export default function App() {
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:'50%', overflow:'hidden', background:'#fff', border:'1.5px solid #e8f5ee', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            <img src="/LOGO-SSV-BOPPARD-_1_.png" alt="SSV" style={{ width:32, height:32, objectFit:'contain' }}
-              onError={(e) => {
-                const el = e.target as HTMLImageElement
-                el.style.display = 'none'
-                el.parentElement!.innerHTML = '<span style="font-family:Lexend,sans-serif;font-weight:900;font-size:10px;color:#0d631b">SSV</span>'
-              }} />
+            {verein.logo_url ? (
+              <img src={verein.logo_url} alt={verein.name} style={{ width:32, height:32, objectFit:'contain' }}
+                onError={(e) => {
+                  const el = e.target as HTMLImageElement
+                  el.style.display = 'none'
+                  el.parentElement!.textContent = kuerzel
+                }} />
+            ) : (
+              <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, fontSize:10, color:'var(--primary)' }}>{kuerzel}</span>
+            )}
           </div>
-          <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, color:'#0d631b', fontSize:14, textTransform:'uppercase', letterSpacing:'0.1em' }}>
-            SSV Boppard
+          <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:900, color:'var(--primary)', fontSize:14, textTransform:'uppercase', letterSpacing:'0.1em' }}>
+            {verein.name}
           </span>
         </div>
 
@@ -290,7 +356,7 @@ export default function App() {
                     <div style={{ marginTop:8, display:'inline-flex', alignItems:'center', gap:4, background:'#e8f5ee', borderRadius:20, padding:'3px 10px' }}>
                       <span className="material-symbols-outlined" style={{ fontSize:13, color:'#0d631b' }}>stars</span>
                       <span style={{ fontFamily:'Lexend,sans-serif', fontWeight:700, fontSize:12, color:'#0d631b' }}>
-                        {profile.punkte} Punkte
+                        {mitgliedschaft.punkte} Punkte
                       </span>
                     </div>
                   </div>
@@ -336,7 +402,7 @@ export default function App() {
         {activeTab === 'meineschichten' && <MeineSchichten {...screenProps} />}
         {activeTab === 'rangliste'      && <Rangliste      {...screenProps} />}
         {activeTab === 'shop'           && <Shop           {...screenProps} />}
-        {activeTab === 'verwaltung' && profile.is_admin && <Verwaltung {...screenProps} />}
+        {activeTab === 'verwaltung' && mitgliedschaft.is_admin && <Verwaltung {...screenProps} />}
         {activeTab === 'profil' && (
           <Profil
             {...screenProps}

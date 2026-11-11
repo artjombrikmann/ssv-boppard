@@ -1,4 +1,8 @@
 {
+  "rewrites": [
+    { "source": "/manifest.json", "destination": "/api/manifest" },
+    { "source": "/passwort-neu", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/index.html",
