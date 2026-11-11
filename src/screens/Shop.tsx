@@ -214,4 +214,4 @@ export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden
       )}
     </div>
   )
-}
+}

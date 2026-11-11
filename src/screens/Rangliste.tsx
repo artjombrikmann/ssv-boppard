@@ -137,4 +137,4 @@ export default function Rangliste({ profile, mitgliedschaft }: Props) {
       )}
     </div>
   )
-}
+}

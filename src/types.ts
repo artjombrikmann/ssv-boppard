@@ -158,4 +158,4 @@ export interface GutscheinAnfrage {
   status: string
   created_at: string
   profiles?: { name: string }
-}
+}
