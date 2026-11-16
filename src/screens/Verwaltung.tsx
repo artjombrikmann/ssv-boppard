@@ -4,6 +4,7 @@ import { Profile, Mitgliedschaft, Schichtbelegung, Veranstaltung, Einstellungen,
 import { getBanner, useEventTypen } from '../eventBanner'
 import { useVerein } from '../VereinContext'
 import VerwaltungShop from './VerwaltungShop'
+import { useBestaetigung } from '../components/Bestaetigung'
 import VerwaltungTypen from './VerwaltungTypen'
 
 interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void; onMitgliedschaftNeuLaden?: () => Promise<void> }
@@ -18,6 +19,7 @@ interface VeranstaltungMitAuslastung extends Veranstaltung {
 
 export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNeuLaden }: Props) {
   const verein = useVerein()
+  const [fragen, bestaetigungsDialog] = useBestaetigung()
   const [typenVersion, setTypenVersion] = useState(0)
   const typen = useEventTypen(mitgliedschaft?.verein_id ?? verein.id, typenVersion)
   const [tab,        setTab]        = useState<AdminTab>('uebersicht')
@@ -179,7 +181,7 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
   }
 
   async function deleteVeranstaltung(ev: VeranstaltungMitAuslastung) {
-    const ok = window.confirm(`Veranstaltung "${ev.name}" wirklich löschen?\n\nAlle ${ev.schichten.length} Schichten werden ebenfalls gelöscht.`)
+    const ok = await fragen(`Veranstaltung "${ev.name}" wirklich löschen?\n\nAlle ${ev.schichten.length} Schichten werden ebenfalls gelöscht.`, { titel: 'Veranstaltung löschen?', ok: 'Löschen', gefahr: true })
     if (!ok) return
     const { error } = await supabase.from('veranstaltungen').delete().eq('id', ev.id)
     if (error) showToast('❌ Fehler: ' + error.message)
@@ -187,7 +189,7 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
   }
 
   async function deleteSchicht(s: Schicht) {
-    const ok = window.confirm(`Schicht wirklich löschen?${s.belegt > 0 ? `\n\n⚠️ ${s.belegt} Mitglied(er) werden abgemeldet.` : ''}`)
+    const ok = await fragen(`Schicht wirklich löschen?${s.belegt > 0 ? `\n\n⚠️ ${s.belegt} Mitglied(er) werden abgemeldet.` : ''}`, { titel: 'Schicht löschen?', ok: 'Löschen', gefahr: true })
     if (!ok) return
     const { error } = await supabase.from('schichten').delete().eq('id', s.id)
     if (error) showToast('❌ Fehler: ' + error.message)
@@ -313,7 +315,7 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
   }
 
   async function gastZusammenfuehren(v: { gast_id: string; gast_name: string; mitglied_id: string; mitglied_name: string }) {
-    const ok = window.confirm(`Gast "${v.gast_name}" mit dem Konto "${v.mitglied_name}" zusammenführen?\n\nSchichten, Punkte und Anfragen des Gasts gehen auf das Konto über. Der Gast wird danach gelöscht. Das lässt sich nicht rückgängig machen.`)
+    const ok = await fragen(`Gast "${v.gast_name}" mit dem Konto "${v.mitglied_name}" zusammenführen?\n\nSchichten, Punkte und Anfragen des Gasts gehen auf das Konto über. Der Gast wird danach gelöscht. Das lässt sich nicht rückgängig machen.`, { titel: 'Zusammenführen?', ok: 'Zusammenführen', gefahr: true })
     if (!ok) return
     const { data, error } = await supabase.rpc('gast_zusammenfuehren', {
       p_gast: v.gast_id, p_echt: v.mitglied_id, p_verein: mitgliedschaft?.verein_id ?? verein.id,
@@ -324,7 +326,7 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
   }
 
   async function ausVereinEntfernen(user: Profile) {
-    const ok = window.confirm(`"${user.name || user.display_name}" aus dem Verein entfernen?\n\nZukünftige Schichten werden ausgetragen. ${(user as any).is_temp ? 'Der Gast wird komplett gelöscht.' : 'Das Konto selbst bleibt bestehen.'}`)
+    const ok = await fragen(`"${user.name || user.display_name}" aus dem Verein entfernen?\n\nZukünftige Schichten werden ausgetragen. ${(user as any).is_temp ? 'Der Gast wird komplett gelöscht.' : 'Das Konto selbst bleibt bestehen.'}`, { titel: 'Aus Verein entfernen?', ok: 'Entfernen', gefahr: true })
     if (!ok) return
     const { error } = await supabase.rpc('mitglied_entfernen', {
       p_user: user.id, p_verein: mitgliedschaft?.verein_id ?? verein.id,
@@ -384,11 +386,12 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
   }
 
   async function removeAssignment(user: Profile, schicht: Schicht) {
-    const ok = window.confirm(`${user.display_name || user.name} aus dieser Schicht austragen?`)
+    const ok = await fragen(`${user.display_name || user.name} aus dieser Schicht austragen?`, { titel: 'Austragen?', ok: 'Austragen', gefahr: true })
     if (!ok) return
     await supabase.from('schichtbelegungen').delete().eq('schicht_id', schicht.id).eq('mitglied_id', user.id)
     const { count } = await supabase.from('schichtbelegungen').select('*', { count: 'exact', head: true }).eq('schicht_id', schicht.id).eq('status', 'Angemeldet')
     await supabase.from('schichten').update({ belegt: count ?? 0 }).eq('id', schicht.id)
+    setUserBelegungen(prev => prev.filter(id => id !== schicht.id))   // erst nach der Bestätigung
     showToast('🗑️ Zuweisung entfernt'); loadAll(); loadAllSchichten()
   }
 
@@ -485,7 +488,7 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
   }
 
   async function deleteVorlage(id: string) {
-    const ok = window.confirm('Vorlage wirklich löschen?')
+    const ok = await fragen('Vorlage wirklich löschen?', { titel: 'Vorlage löschen?', ok: 'Löschen', gefahr: true })
     if (!ok) return
     await supabase.from('schicht_vorlagen').delete().eq('id', id)
     setAktiveVorlage(null)
@@ -1121,7 +1124,7 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
                       <p style={{ fontSize:10, color:'#9ca3af' }}>{(s as any).veranstaltungen?.name} · {s.startzeit?.slice(0,5)}–{s.endzeit?.slice(0,5)} · {s.belegt}/{s.plaetze} belegt</p>
                     </div>
                     {istZugewiesen ? (
-                      <button onClick={() => { removeAssignment(selectedUser!, s); setUserBelegungen(prev => prev.filter(id => id !== s.id)) }} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Entfernen</button>
+                      <button onClick={() => removeAssignment(selectedUser!, s)} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Entfernen</button>
                     ) : (
                       <button onClick={() => { assignSchicht(selectedUser!, s); if (!voll) setUserBelegungen(prev => [...prev, s.id]) }} disabled={voll} style={{ ...btnSm, background: voll ? '#f3f4f6' : 'var(--primary)', color: voll ? '#9ca3af' : '#fff', fontSize:11, cursor: voll ? 'not-allowed' : 'pointer' }}>{voll ? 'Voll' : '+ Zuweisen'}</button>
                     )}
@@ -1294,6 +1297,8 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
           </div>
         </div>
       )}
+
+      {bestaetigungsDialog}
 
       {loeschenUserId && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>

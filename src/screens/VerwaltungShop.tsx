@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { useBestaetigung } from '../components/Bestaetigung'
 
 // Admin-Tab "Shop": Anfragen bearbeiten und Prämien pflegen.
 // Alles läuft über Datenbankfunktionen (04n, 04b), nicht über direkte Tabellenzugriffe.
@@ -35,6 +36,7 @@ export default function VerwaltungShop({ vereinId, toast, onGeaendert }: Props) 
   const [form, setForm]         = useState<Form | null>(null)
   const [busy, setBusy]         = useState(false)
   const [alle, setAlle]         = useState(false)
+  const [fragen, dialog]       = useBestaetigung()
 
   useEffect(() => { laden() }, [vereinId])
 
@@ -50,7 +52,7 @@ export default function VerwaltungShop({ vereinId, toast, onGeaendert }: Props) 
 
   async function bearbeiten(a: Anfrage, status: 'bearbeitet' | 'abgelehnt') {
     if (status === 'abgelehnt' &&
-        !window.confirm(`Anfrage "${a.preis_name}" von ${a.mitglied_name} ablehnen?\n\n${a.punkte_kosten} Punkte werden zurückgebucht. Eine abgelehnte Anfrage lässt sich nicht wieder öffnen.`)) return
+        !await fragen(`Anfrage "${a.preis_name}" von ${a.mitglied_name} ablehnen?\n\n${a.punkte_kosten} Punkte werden zurückgebucht. Eine abgelehnte Anfrage lässt sich nicht wieder öffnen.`, { titel: 'Anfrage ablehnen?', ok: 'Ablehnen', gefahr: true })) return
     setBusy(true)
     const { error } = await supabase.rpc('shop_anfrage_bearbeiten', { p_id: a.id, p_status: status })
     setBusy(false)
@@ -90,7 +92,7 @@ export default function VerwaltungShop({ vereinId, toast, onGeaendert }: Props) 
   }
 
   async function loeschen(p: Praemie) {
-    if (!window.confirm(`Prämie "${p.name}" löschen?\n\nGibt es schon Anfragen dazu, wird sie nur ausgeblendet.`)) return
+    if (!await fragen(`Prämie "${p.name}" löschen?\n\nGibt es schon Anfragen dazu, wird sie nur ausgeblendet.`, { titel: 'Prämie löschen?', ok: 'Löschen', gefahr: true })) return
     const { data, error } = await supabase.rpc('praemie_loeschen', { p_id: p.id })
     if (error) { toast('❌ ' + error.message); return }
     toast(data === 'ausgeblendet' ? 'Prämie ausgeblendet (es gibt schon Anfragen)' : '🗑️ Prämie gelöscht')
@@ -176,6 +178,7 @@ export default function VerwaltungShop({ vereinId, toast, onGeaendert }: Props) 
           </div>
         </Box>
       )}
+      {dialog}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { useBestaetigung } from '../components/Bestaetigung'
 
 // Event-Typen eines Vereins pflegen (Name, Symbol, Farbe, Konfetti). Läuft über die Funktionen aus 04o.
 // Der Schlüssel eines Typs bleibt fest, weil Events und Vorlagen darauf zeigen. Umbenannt wird nur der Name.
@@ -16,6 +17,7 @@ export default function VerwaltungTypen({ vereinId, toast, onGeaendert }: Props)
   const [typen, setTypen] = useState<Typ[]>([])
   const [form, setForm]   = useState<Form | null>(null)
   const [busy, setBusy]   = useState(false)
+  const [fragen, dialog] = useBestaetigung()
 
   useEffect(() => { laden() }, [vereinId])
 
@@ -50,7 +52,7 @@ export default function VerwaltungTypen({ vereinId, toast, onGeaendert }: Props)
   }
 
   async function loeschen(t: Typ) {
-    if (!window.confirm(`Typ "${t.label}" löschen?`)) return
+    if (!await fragen(`Typ "${t.label}" löschen?`, { titel: 'Typ löschen?', ok: 'Löschen', gefahr: true })) return
     const { error } = await supabase.rpc('event_typ_loeschen', { p_verein: vereinId, p_key: t.key })
     if (error) { toast('❌ ' + error.message); return }
     toast('🗑️ Typ gelöscht')
@@ -101,6 +103,7 @@ export default function VerwaltungTypen({ vereinId, toast, onGeaendert }: Props)
           </div>
         </div>
       )}
+      {dialog}
     </div>
   )
 }
