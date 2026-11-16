@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { Profile, Schichtbelegung, Einstellungen, Mitgliedschaft } from "../types";
+import { Profile, Schichtbelegung, Mitgliedschaft } from "../types";
 
 interface Props {
   profile: Profile;
@@ -17,45 +17,8 @@ const BADGES = [
   { name: "Legende", icon: "🦁", req: 300 },
 ];
 
-const VOUCHERS = [
-  {
-    id: "food",
-    label: "Verzehrgutschein",
-    icon: "🍺",
-    desc: "Am Vereinsheim & Veranstaltungen",
-    bg: "#1a7a4a",
-    ptsKey: "food_pts" as keyof Einstellungen,
-    valKey: "food_val" as keyof Einstellungen,
-    defaultPts: 200,
-    defaultVal: 10,
-  },
-  {
-    id: "shop",
-    label: "Fanshop-Gutschein",
-    icon: "👕",
-    desc: "Im SSV Boppard Online-Fanshop",
-    bg: "#1a3a7a",
-    ptsKey: "shop_pts" as keyof Einstellungen,
-    valKey: "shop_val" as keyof Einstellungen,
-    defaultPts: 300,
-    defaultVal: 15,
-  },
-];
-
 export default function Profil({ profile, mitgliedschaft, onProfileUpdate, onMitgliedschaftNeuLaden, onTabChange }: Props) {
   const [bookings, setBookings] = useState<Schichtbelegung[]>([]);
-  const [settings, setSettings] = useState<Einstellungen>({
-    id: 1,
-    food_pts: 200,
-    food_val: 10,
-    shop_pts: 300,
-    shop_val: 15,
-  });
-  const [redeemType, setRedeemType] = useState<(typeof VOUCHERS)[0] | null>(null);
-  const [done, setDone] = useState(false);
-  const [redeeming, setRedeeming] = useState(false);
-  const [redeemError, setRedeemError] = useState("");
-
   const [showEdit, setShowEdit]       = useState(false);
   const [displayName, setDisplayName] = useState(profile.display_name || profile.name?.split(" ")[0] || "");
   const [newPw, setNewPw]             = useState("");
@@ -72,62 +35,7 @@ export default function Profil({ profile, mitgliedschaft, onProfileUpdate, onMit
       .select("*, schichten(bezeichnung,punkte,veranstaltungen(name))")
       .eq("mitglied_id", profile.id)
       .then(({ data }) => setBookings(data ?? []));
-    supabase
-      .from("einstellungen")
-      .select("*")
-      .single()
-      .then(({ data }) => { if (data) setSettings(data); });
   }, []);
-
-  async function handleRedeem(v: (typeof VOUCHERS)[0]) {
-    if (redeeming) return;
-    const req = settings[v.ptsKey] as number;
-    setRedeemError("");
-    setRedeeming(true);
-    try {
-      // Aktuelles Guthaben frisch aus der DB (der Client-State kann veraltet sein)
-      const { data: aktuell } = await supabase.from("mitgliedschaften").select("punkte")
-        .eq("user_id", profile.id).eq("verein_id", mitgliedschaft.verein_id).single();
-      const guthaben = aktuell?.punkte ?? 0;
-      if (guthaben < req) {
-        await onMitgliedschaftNeuLaden();
-        setRedeemError("Nicht genug Punkte.");
-        return;
-      }
-
-      // 1. Punkte abziehen. Bei Fehler abbrechen, es wird nichts gespeichert.
-      const { error: abzugError } = await supabase.rpc("punkte_abziehen", {
-        user_id: profile.id,
-        amount: req,
-      });
-      if (abzugError) {
-        console.error("Punkteabzug fehlgeschlagen:", abzugError);
-        setRedeemError("Die Punkte konnten nicht abgezogen werden. Es wurde nichts eingelöst.");
-        return;
-      }
-
-      // 2. Anfrage speichern. Die Admin-Mail verschickt der DB-Trigger trigger_gutschein_mail,
-      //    kein zusätzlicher Function-Aufruf aus dem Frontend (sonst doppelte Mails).
-      const { error: insertError } = await supabase.from("gutschein_anfragen").insert({
-        mitglied_id: profile.id,
-        typ: v.id,
-        punkte: req,
-        status: "genehmigt",
-      });
-      if (insertError) {
-        console.error("Gutschein-Anfrage speichern fehlgeschlagen:", insertError);
-        setRedeemError("Die Punkte wurden abgezogen, aber die Anfrage konnte nicht gespeichert werden. Bitte melde dich beim Admin.");
-      } else {
-        setDone(true);
-        setRedeemType(null);
-      }
-
-      // Punktestand neu laden
-      await onMitgliedschaftNeuLaden();
-    } finally {
-      setRedeeming(false);
-    }
-  }
 
   async function saveDisplayName() {
     if (!displayName.trim()) { setEditMsg("❌ Name darf nicht leer sein."); return; }
@@ -215,29 +123,15 @@ export default function Profil({ profile, mitgliedschaft, onProfileUpdate, onMit
         </button>
       </div>
 
-      {/* FIX: Erfolgsmeldung angepasst – kein Admin-Schritt mehr nötig */}
-      {done && (
-        <div style={{ background: "var(--primary-light)", color: "#1a7a4a", padding: "10px 14px", borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
-          ✅ Gutschein wird vorbereitet – der Admin bringt ihn dir mit!
-        </div>
-      )}
-
       <div style={p.sectionTitle}>Punkte einlösen</div>
-      {VOUCHERS.map((v) => {
-        const req = settings[v.ptsKey] as number;
-        const val = settings[v.valKey] as number;
-        return (
-          <div key={v.id} style={{ ...p.voucherCard, background: v.bg }}>
-            <div style={p.voucherTitle}>{v.icon} {v.label}</div>
-            <div style={p.voucherSub}>{v.desc}</div>
-            <div style={p.voucherPts}>{req} Punkte = {val} € Gutschein</div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
-              <span style={{ fontSize: 12, opacity: 0.8 }}>Guthaben: <strong>{pts} Punkte</strong></span>
-              <button style={p.voucherBtn} onClick={() => { setRedeemError(""); setRedeemType(v); }}>Einlösen</button>
-            </div>
-          </div>
-        );
-      })}
+      <div style={{ ...p.voucherCard, background: "var(--primary)" }}>
+        <div style={p.voucherTitle}>🎁 Prämien-Shop</div>
+        <div style={p.voucherSub}>Löse deine Punkte gegen Gutscheine und Prämien deines Vereins ein.</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+          <span style={{ fontSize: 12, opacity: 0.8 }}>Guthaben: <strong>{pts} Punkte</strong></span>
+          <button style={p.voucherBtn} onClick={() => onTabChange("shop")}>Zum Shop</button>
+        </div>
+      </div>
 
       <div style={p.sectionTitle}>Meine Abzeichen</div>
       <div style={p.badgeGrid}>
@@ -272,29 +166,6 @@ export default function Profil({ profile, mitgliedschaft, onProfileUpdate, onMit
       <button style={p.logoutBtn} onClick={() => supabase.auth.signOut()}>
         Abmelden
       </button>
-
-      {redeemType && (
-        <div style={p.overlay} onClick={() => setRedeemType(null)}>
-          <div style={p.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={p.handle} />
-            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 12 }}>
-              {redeemType.icon} {redeemType.label} einlösen
-            </div>
-            <IRow label="Benötigte Punkte" value={`${settings[redeemType.ptsKey]} Punkte`} />
-            <IRow label="Gutscheinwert"    value={`${settings[redeemType.valKey]} €`} />
-            <IRow label="Deine Punkte"     value={`${pts} Punkte`} color={pts < (settings[redeemType.ptsKey] as number) ? "#c0392b" : undefined} />
-            <div style={{ height: 16 }} />
-            {redeemError && <p style={{ color: "#c0392b", fontSize: 13, marginBottom: 10 }}>{redeemError}</p>}
-            {pts >= (settings[redeemType.ptsKey] as number) ? (
-              <button style={p.btnPrimary} onClick={() => handleRedeem(redeemType)} disabled={redeeming}>{redeeming ? "Wird verarbeitet…" : "Gutschein anfordern"}</button>
-            ) : (
-              <div style={p.notEnough}>
-                Nicht genug Punkte. Dir fehlen noch <strong>{(settings[redeemType.ptsKey] as number) - pts} Punkte</strong>.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {showEdit && (
         <div style={p.overlay} onClick={() => setShowEdit(false)}>

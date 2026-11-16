@@ -1,6 +1,6 @@
 # Übergabe: Stand Multi-Mandant-Umbau
 
-Stand: 2026-11-11. Branch `multi-mandant` (gleich `main`, Merge-Commit `59613a0`). Gesamtanleitung: `PHASE_B_MULTI_MANDANT.md`, Inventur: `INVENTUR_SCHRITT_0.md`.
+Stand: 2026-11-11 (Abend). Arbeitsbranch jetzt `vorbereitung-ap5` (siehe unten), `main` ist unverändert auf 7264507. Branch `multi-mandant` (gleich `main`, Merge-Commit `7264507`, PR #3). Gesamtanleitung: `PHASE_B_MULTI_MANDANT.md`, Inventur: `INVENTUR_SCHRITT_0.md`.
 
 Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Datenbank und dieselben Edge Functions. Getestet wird nur mit Test-Accounts.
 
@@ -14,16 +14,32 @@ Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Daten
 | 4.2 Mitgliedschaft, Punkte/Admin/Rang | Erledigt, getestet (Gutschein-Test lief, Mails kamen an) |
 | 4.3a Registrierung, Beitreten, Datenschutz | Erledigt, alle 6 Tests bestanden |
 | 4.3b Passwort-Reset | Erledigt: `04h` ausgeführt, Function `passwort-reset` deployt, in Produktion getestet |
-| 4.4 bis 4.8 | Offen |
+| 4.1b Farben auf CSS-Variablen | Erledigt, in Produktion (102x primary, 41x light; Ampel und Banner-Verläufe bewusst fest bzw. aus DB) |
+| 4.6 Event-Typen aus der Datenbank | Erledigt, in Produktion, `04i` ausgeführt. **Pflege der Typen im Admin fehlt noch** (nur per SQL) |
+| 4.5 Verwaltung auf Funktionen, Gäste zusammenführen, Entfernen | Erledigt auf Branch `vorbereitung-ap5` (Preview), `04l` ausgeführt und getestet |
+| 4.4 Shop generisch | Code fertig auf `vorbereitung-ap5`: `Shop.tsx` liest `preise` und löst über `shop_einloesen` ein, `Profil.tsx` verweist auf den Shop, Function `shop-anfrage`, `04m`. Function deployt und `04m` ausgeführt, Frontend in der Preview noch **nicht getestet**. Admin-Tabs "Prämien" und "Anfragen" fehlen noch (Pflege der `preise` nur per SQL) |
+| 4.7 Functions, 4.8 Vercel/DNS | Offen |
 | 5 bis 8 | Offen |
 
-**`multi-mandant` ist seit 2026-11-11 nach `main` gemergt (PR #2, `59613a0`).** Die Produktions-App läuft mit dem neuen Frontend (Teil 4.1 bis 4.3b). Rollback bei Problemen: in Vercel den Production-Eintrag `b61a998` (Stand AP 2) suchen, Promote to Production. Die Datenbank bleibt, das alte Frontend arbeitet damit weiter.
+**`multi-mandant` ist nach `main` gemergt (PR #2 `59613a0`, PR #3 `7264507`).** Die Produktions-App läuft mit dem neuen Frontend (Teil 4.1 bis 4.3b). Rollback bei Problemen: in Vercel den Production-Eintrag `b61a998` (Stand AP 2) suchen, Promote to Production. Die Datenbank bleibt, das alte Frontend arbeitet damit weiter.
 
 ## Sofort offen
 
-Nichts Dringendes. Beobachten: Das Event am 2026-11-13 läuft auf der neuen Version. Nach dem Merge laufen alle Boppard-Nutzer über das neue Frontend; Meldungen von Mitgliedern ernst nehmen.
+**Erledigt am 2026-11-16: Punkt 1 (04k) und Punkt 2 (04j) sind ausgeführt und getestet. Offen bleibt Punkt 3.**
 
-Prüfabfrage Punkte (muss 0 liefern, siehe unten) nach dem Merge ist noch zu bestätigen.
+**1. (erledigt) Datenleck schließen:** Am 2026-11-11 zeigte eine Abfrage mit dem öffentlichen Anon-Key,
+dass ohne Login lesbar sind: `profiles` (76 Zeilen mit E-Mail und Punkten), `einstellungen` (Freischaltcode, Admin-Mail),
+`schichtbelegungen` (119), `schichten` (88), `push_subscriptions` (2), `preise` (3). Es wurden nur Anzahlen abgefragt.
+Das Leck besteht seit Beginn (Policy `read_all`), nur das Schreiben war seit `01_hotfix` zu.
+Sofortmaßnahme: `sql/04k_anonym_sperren.sql` (restriktive Policies, ändert nichts Bestehendes, mit 6 `drop policy` zurücknehmbar).
+**Vorher** die Prüfabfrage 1b aus der Datei ausführen (Besitzer der Funktionen = postgres).
+Danach sofort mit dem Test-Account: Login, Marktplatz, an-/abmelden; als Admin den Admin-Tab öffnen.
+
+**2. `sql/04j_switch_hilfsfunktionen.sql` ausführen** (rein additiv, jederzeit).
+
+**3. Event am 2026-11-13** und zwei große Events Ende November: bis dahin nichts an Punkten, Cron oder Mails ändern.
+
+Danach, in dieser Reihenfolge: Frontend-Umbau (4.4, 4.5, 4.7, Rest 4.6), dann AP 5. Alles Weitere steht in `AP5_VORBEREITUNG.md`.
 
 ## SQL-Dateien (alle in der Datenbank ausgeführt, außer wo vermerkt)
 
@@ -40,6 +56,13 @@ Prüfabfrage Punkte (muss 0 liefern, siehe unten) nach dem Merge ist noch zu bes
 | `04f_vereine_public_id.sql` | `id` in `vereine_public` | ausgeführt |
 | `04g_registrierung_serverseitig.sql` | Code-Prüfung in `handle_new_user`, Einwilligungen, Brücke `einstellungen` nach `vereins_geheimnisse` | ausgeführt |
 | `04h_reset_versuche.sql` | Begrenzung Passwort-Reset | ausgeführt |
+| `04i_event_typen_darstellung.sql` | `icon`, `verlauf`, `deko` in `event_typen`, Boppard-Werte, Verlauf-Prüfung | ausgeführt |
+| `04j_switch_hilfsfunktionen.sql` | `schicht_teilnehmer`, `belegungen_offen`, `vereins_mitglieder` (mit `email_bestaetigt`) | ausgeführt 2026-11-16, Kontrollen bestanden (Datei liegt auf Branch `vorbereitung-ap5`) |
+| `04k_anonym_sperren.sql` | restriktive Policies gegen anonymen Lesezugriff | ausgeführt 2026-11-16, 6 Policies, App-Test mit Test-Account bestanden |
+| `04l_mitglied_entfernen.sql` | `mitglied_entfernen` (Admin-Tab User, "Entfernen") | ausgeführt 2026-11-16, getestet |
+| `04m_shop_mail_und_bruecke.sql` | Mail-Trigger auf `shop_anfragen` (Function `shop-anfrage`), Punkte-Brücke `mitgliedschaften` nach `profiles` | ausgeführt 2026-11-16, Kontrollen bestanden. Function `shop-anfrage` deployt. Frontend noch nicht in Produktion |
+| `05_b3_switch.sql` | DB-Switch (RLS pro Verein) | **geschrieben, nicht ausgeführt**, erst nach den Events |
+| `05_b3_rollback.sql` | macht den Switch rückgängig | geschrieben, nicht ausgeführt |
 
 ## Wichtige Entscheidungen und Fallen
 
@@ -56,12 +79,27 @@ Prüfabfrage Punkte (muss 0 liefern, siehe unten) nach dem Merge ist noch zu bes
 - **Cron-Secret** liegt als Function-Secret `CRON_SECRET` und in den zwei Cron-Jobs. Der Wert stand einmal in einem Screenshot. Auf Wunsch neu setzen (SQL und `supabase secrets set`).
 - **Gäste** (`is_temp`): 2 Stück. Die Verwaltung legt sie noch per `profiles.insert` an (ohne Mitgliedschaft). Umstellung auf `temp_user_anlegen` ist Teil 4.5.
 
-## Nächste Schritte nach 3b (AP 4 Rest)
+## Stand der Vorbereitung
 
-- **4.1b** Alle festen Grüntöne (rund 700) auf CSS-Variablen umstellen, Boppard-Texte aus dem Verein (Login, Shop, Marktplatz). Boppard muss danach exakt gleich aussehen.
+Branch `vorbereitung-ap5` (auf GitHub, nicht in `main`): 04j, 04k, 05 Switch und Rollback, `AP5_VORBEREITUNG.md`, außerdem
+die Änderung für Push je Verein (`user_id,verein_id`), damit Push nach dem Switch nicht bricht. Die SQL-Dateien sind mit
+dem Postgres-Parser (`libpg-query`) auf Syntax geprüft, aber **nie gegen die echte Datenbank gelaufen**.
+Bei Funden beim Durchsehen des Codes: Marktplatz-Join auf `profiles` (zeigte nach dem Switch "Unbekannt"), Verwaltung schreibt
+`schichten.belegt` direkt (wirkungslos seit 01_hotfix), `push_subscriptions onConflict` (brach nach dem Switch).
+Achtung Push: Es gibt aktuell **keine** Function, die Push sendet. Der Schalter speichert nur ein Abo.
+
+## Arbeitsregeln, die sich bewährt haben
+
+- **Zeilenenden:** Die Dateien im Repo sind gemischt (CRLF und LF). Nach jedem Schreiben einer Datei die Endung an `HEAD` angleichen, sonst zeigt Git tausende geänderte Zeilen. Zuverlässig messen nur `git ls-files --eol` und `od`, `grep -c` und `awk` lesen im Textmodus und täuschen.
+- **Jede Änderung per Skript mit Treffer-Zählung** (muss genau 1 treffen) oder per Edit-Werkzeug, nie blind überschreiben.
+- **Vor jedem Merge:** Diff-Größe prüfen (Zehntausende Zeilen heißt Zeilenenden), Funktions-Änderungen auflisten (Merge rollt Functions nicht aus).
+
+## Nächste Schritte (AP 4 Rest)
+
+- **4.1b Rest:** Boppard-Texte aus dem Verein sind erledigt für Login, Header, Marktplatz-Danke. Offen: Shop-Artikeltexte (kommen mit 4.4), `ADMIN_MAIL` in Shop.tsx, Platzhaltertexte in Verwaltung.tsx (Ort, Mail, Code), Fake-Domain `@ssv-boppard.intern` (kommt mit 4.5).
 - **4.4** Shop generisch (`preise`, `shop_einloesen`, Profil-Gutscheindialog in denselben Weg), Admin-Tab "Prämien" und "Anfragen", Trigger auf `shop_anfragen` für die Mail, Function `shop-anfrage`. Feature-Flag `shop`.
 - **4.5** Admin-Tab "User": Gäste zusammenführen (`gast_vorschlaege`, `gast_zusammenfuehren`), Temp-User über `temp_user_anlegen`, Mitgliederliste über `vereins_mitglieder`, "Aus Verein entfernen".
-- **4.6** Event-Typen im Admin pflegen, `eventBanner.ts` aus `event_typen`.
+- **4.6 Rest:** Oberfläche zum Pflegen der Event-Typen im Admin (anlegen, umbenennen, Symbol, Farbe).
 - **4.7** Edge Functions mandantenfähig (`_shared/mail.ts` ist als Baustein da), `punkte-vergabe` und `schicht-reminder` für alle Vereine mit `cron_laeufe`, `push-notification` neu, `account-loeschen` v2.
 - **4.8** Vercel Wildcard-Domain `*.schichtmeisterapp.de`, Subdomains `boppard`/`spay`.
 - **Verwaltung.tsx** liest noch `profiles` (Mitgliederliste, Join für Punktevergabe) und `einstellungen` ohne Vereinsfilter. Das ist für AP 5 zwingend umzustellen.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Profile, Einstellungen, Mitgliedschaft } from '../types'
+import { Profile, Mitgliedschaft } from '../types'
 
 interface Props {
   profile: Profile
@@ -10,32 +10,40 @@ interface Props {
 }
 
 interface Artikel {
-  id: number
+  id: string
   name: string
   beschreibung: string
   punkte: number
   icon: string
   gradient: string
+  verfuegbar: boolean
 }
 
-const ARTIKEL: Artikel[] = [
-  { id: 1, name: '5 € Verzehrgutschein',  beschreibung: 'Einlösbar bei jedem Heimspiel am Hauptkiosk des SSV Boppard.', punkte: 50,  icon: 'restaurant', gradient: 'linear-gradient(135deg, #166534, #15803d)' },
-  { id: 2, name: '10 € Fanshop-Gutschein', beschreibung: 'Einlösbar im offiziellen SSV Boppard Online-Fanshop.',          punkte: 200, icon: 'checkroom',  gradient: 'linear-gradient(135deg, #1e3a5f, #1d4ed8)' },
-  { id: 3, name: 'Heimtrikot 2025',        beschreibung: 'Das offizielle Heimtrikot des SSV Boppard mit Vereinswappen.',  punkte: 500, icon: 'emoji_events', gradient: 'linear-gradient(135deg, #92400e, #d97706)' },
-]
-
-const ADMIN_MAIL = 'geschaeftsfuehrung@ssv-boppard.de'
+const HEX = /^#[0-9a-f]{6}$/i
+function verlauf(farbe: unknown): string {
+  const f = typeof farbe === 'string' && HEX.test(farbe) ? farbe : '#0d631b'
+  return `linear-gradient(135deg, ${f}, ${f}cc)`
+}
 
 export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden }: Props) {
   const [selected,  setSelected]  = useState<Artikel | null>(null)
   const [sending,   setSending]   = useState(false)
   const [success,   setSuccess]   = useState(false)
   const [punkte,    setPunkte]    = useState(mitgliedschaft.punkte ?? 0)
-  const [settings,  setSettings]  = useState<Einstellungen | null>(null)
+  const [artikel,   setArtikel]   = useState<Artikel[] | null>(null)
+  const [adminMail, setAdminMail] = useState('')
   const [fehler,    setFehler]    = useState('')
 
   useEffect(() => {
-    supabase.from('einstellungen').select('*').single().then(({ data }) => { if (data) setSettings(data) })
+    const vid = mitgliedschaft.verein_id
+    supabase.from('einstellungen').select('admin_email').eq('verein_id', vid).maybeSingle()
+      .then(({ data }) => { if (data?.admin_email) setAdminMail(data.admin_email) })
+    supabase.from('preise').select('*').eq('verein_id', vid).eq('verfuegbar', true).order('punkte_kosten')
+      .then(({ data }) => setArtikel(((data ?? []) as any[]).map(r => ({
+        id: r.id, name: r.name, beschreibung: r.beschreibung ?? '', punkte: r.punkte_kosten,
+        icon: r.icon || 'redeem', gradient: verlauf(r.farbe),
+        verfuegbar: r.anzahl_verfuegbar === null || r.anzahl_verfuegbar > 0,
+      }))))
     // Aktuellen Punktestand laden
     ladePunkte()
   }, [])
@@ -56,39 +64,18 @@ export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden
   async function einloesen(artikel: Artikel) {
     if (sending) return
     setFehler('')
-    if (punkte < artikel.punkte) return
+    if (punkte < artikel.punkte || !artikel.verfuegbar) return
     setSending(true)
 
     try {
-      // 1. Punkte abziehen (die RPC prüft das Guthaben nicht, daher vorher frisch aus der DB laden)
-      const guthaben = (await holeGuthaben()) ?? 0
-      if (guthaben < artikel.punkte) {
-        setPunkte(guthaben)
-        setFehler('Nicht genug Punkte.')
-        return
-      }
-
-      const { error: abzugError } = await supabase.rpc('punkte_abziehen', {
-        user_id: profile.id,
-        amount: artikel.punkte,
-      })
-      if (abzugError) {
-        console.error('Punkteabzug fehlgeschlagen:', abzugError)
-        setFehler('Die Punkte konnten nicht abgezogen werden. Es wurde nichts eingelöst.')
-        return
-      }
-
-      // 2. Erst nach erfolgreichem Abzug die Anfrage speichern
-      //    (der DB-Trigger trigger_gutschein_mail verschickt die Mail an den Admin)
-      const { error: insertError } = await supabase.from('gutschein_anfragen').insert({
-        mitglied_id: profile.id,
-        typ: artikel.name,
-        punkte: artikel.punkte,
-        status: 'offen',
-      })
-      if (insertError) {
-        console.error('Anfrage speichern fehlgeschlagen:', insertError)
-        setFehler('Die Punkte wurden abgezogen, aber die Anfrage konnte nicht gespeichert werden. Bitte melde dich bei der Geschäftsführung.')
+      // Eine Transaktion auf dem Server: Prämie prüfen, Guthaben prüfen, Punkte abziehen, Anfrage anlegen.
+      // Die Admin-Mail verschickt der DB-Trigger (Function shop-anfrage).
+      const { error } = await supabase.rpc('shop_einloesen', { p_preis: artikel.id })
+      if (error) {
+        console.error('Einlösen fehlgeschlagen:', error)
+        setFehler(error.message.includes('Nicht genug Punkte') ? 'Nicht genug Punkte.'
+          : error.message.includes('ausverkauft') ? 'Diese Prämie ist leider ausverkauft.'
+          : 'Das Einlösen hat nicht geklappt. Es wurden keine Punkte abgezogen.')
         await ladePunkte()
         return
       }
@@ -129,14 +116,16 @@ export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden
       <div style={{ background:'#f8faf8', borderRadius:12, padding:'10px 14px', display:'flex', gap:8, border:'1px solid #f3f4f6' }}>
         <span className="material-symbols-outlined" style={{ fontSize:16, color:'#5d5e61', marginTop:1 }}>mail</span>
         <p style={{ fontSize:11, color:'#5d5e61', lineHeight:1.5 }}>
-          Bei jeder Einlösung wird automatisch eine E-Mail an <strong>{ADMIN_MAIL}</strong> gesendet. Die Punkte werden sofort abgezogen.
+          Bei jeder Einlösung wird automatisch eine E-Mail an <strong>{adminMail || 'die Geschäftsführung'}</strong> gesendet. Die Punkte werden sofort abgezogen.
         </p>
       </div>
 
       {/* Artikel */}
       <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-        {ARTIKEL.map(a => {
-          const hatPunkte = punkte >= a.punkte
+        {artikel === null && <p style={{ fontSize:13, color:'#9ca3af' }}>Wird geladen…</p>}
+        {artikel?.length === 0 && <p style={{ fontSize:13, color:'#9ca3af' }}>Aktuell sind keine Prämien verfügbar.</p>}
+        {(artikel ?? []).map(a => {
+          const hatPunkte = punkte >= a.punkte && a.verfuegbar
           const fehlen    = a.punkte - punkte
           return (
             <div key={a.id} style={{ background:'#fff', borderRadius:24, overflow:'hidden', border:'1px solid #f3f4f6', opacity: hatPunkte ? 1 : .85 }}>
@@ -159,7 +148,7 @@ export default function Shop({ profile, mitgliedschaft, onMitgliedschaftNeuLaden
                   </button>
                 ) : (
                   <div style={{ width:'100%', padding:12, background:'#f3f4f6', borderRadius:12, textAlign:'center', fontSize:12, fontWeight:700, color:'#9ca3af', fontFamily:'Lexend,sans-serif' }}>
-                    Noch {fehlen.toLocaleString('de')} Punkte nötig
+                    {a.verfuegbar ? `Noch ${fehlen.toLocaleString('de')} Punkte nötig` : 'Ausverkauft'}
                   </div>
                 )}
               </div>

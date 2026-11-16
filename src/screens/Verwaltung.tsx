@@ -40,6 +40,7 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
   const [allSchichten,   setAllSchichten]   = useState<Schicht[]>([])
   const [userBelegungen, setUserBelegungen] = useState<number[]>([])
   const [loeschenUserId, setLoeschenUserId] = useState<string | null>(null)
+  const [gastVorschlaege, setGastVorschlaege] = useState<{ gast_id: string; gast_name: string; mitglied_id: string; mitglied_name: string }[]>([])
   const [testLoading,    setTestLoading]    = useState<string | null>(null)
   const [editSchicht,    setEditSchicht]    = useState<Schicht | null>(null)
   const [editForm,       setEditForm]       = useState({ kategorie_id:'', startzeit:'', endzeit:'', plaetze:1, punkte:10, beschreibung:'' })
@@ -87,12 +88,15 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   async function loadAll() {
+    const vid = mitgliedschaft?.verein_id ?? verein.id
+    supabase.rpc('gast_vorschlaege', { p_verein: vid }).then(({ data }) => setGastVorschlaege((data ?? []) as any[]))
     const [b, m, e, s_data, s, k] = await Promise.all([
-      supabase.from('schichtbelegungen').select('*, profiles(name), schichten(bezeichnung,punkte)').eq('status', 'Angemeldet'),
-      supabase.from('profiles').select('*').order('punkte', { ascending: false }),
-      supabase.from('veranstaltungen').select('*').order('datum'),
-      supabase.from('schichten').select('*'),
-      supabase.from('einstellungen').select('*').single(),
+      // Funktionen statt Join auf profiles: nach dem DB-Switch (AP 5) darf niemand fremde Profile lesen
+      supabase.rpc('belegungen_offen', { p_verein: vid }),
+      supabase.rpc('vereins_mitglieder', { p_verein: vid }),
+      supabase.from('veranstaltungen').select('*').eq('verein_id', vid).order('datum'),
+      supabase.from('schichten').select('*').eq('verein_id', vid),
+      supabase.from('einstellungen').select('*').eq('verein_id', vid).single(),
       supabase.from('kategorien').select('*').order('name'),
     ])
     const alleSchichten: Schicht[] = s_data.data ?? []
@@ -106,8 +110,18 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
       return { ...ev, schichten, gesamtPlaetze, belegtePlaetze, auslastung }
     })
 
-    setBookings(b.data ?? [])
-    setMembers(m.data ?? [])
+    // Zeilen der Funktionen auf die bisherige Form der Oberfläche abbilden
+    setBookings(((b.data ?? []) as any[]).map(r => ({
+      id: r.id, schicht_id: r.schicht_id, mitglied_id: r.mitglied_id, status: r.status,
+      punkte_vergeben: r.punkte_vergeben, created_at: '',
+      profiles: { name: r.mitglied_name },
+      schichten: { bezeichnung: r.schicht_bezeichnung, punkte: r.schicht_punkte },
+    })) as unknown as Schichtbelegung[])
+    setMembers(((m.data ?? []) as any[]).map(r => ({
+      id: r.user_id, name: r.name, display_name: r.display_name, email: r.email,
+      punkte: r.punkte, schichten_count: r.schichten_count, is_admin: r.is_admin,
+      is_temp: r.ist_gast, temp_typ: r.temp_typ, email_bestaetigt: r.email_bestaetigt,
+    })) as unknown as Profile[])
     setEvents(mitAuslastung(alleEvents.filter(ev => ev.status !== 'Abgeschlossen')))
     setArchiv(mitAuslastung(alleEvents.filter(ev => ev.status === 'Abgeschlossen')))
     if (s.data) { setSettings(s.data); setFreischaltcode((s.data as any).freischaltcode ?? '') }
@@ -209,7 +223,7 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
   }
 
   async function saveSettings() {
-    await supabase.from('einstellungen').upsert({ ...settings, id: 1, freischaltcode })
+    await supabase.from('einstellungen').upsert({ ...settings, id: settings.id ?? 1, verein_id: mitgliedschaft?.verein_id ?? verein.id, freischaltcode })
     setSaved(true); setTimeout(() => setSaved(false), 2000); showToast('✅ Einstellungen gespeichert!')
   }
 
@@ -238,19 +252,13 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
   async function addTempUser() {
     if (!newTemp.vorname.trim() || !newTemp.nachname.trim()) { showToast('❌ Vor- und Nachname pflicht'); return }
     setTempLoading(true)
-    if (newTemp.email) {
-      const { data: existingEmail } = await supabase.from('profiles').select('id').eq('email', newTemp.email).limit(1)
-      if (existingEmail && existingEmail.length > 0) { showToast('❌ Diese E-Mail ist bereits vergeben'); setTempLoading(false); return }
-    }
     const name = `${newTemp.vorname.trim()} ${newTemp.nachname.trim()}`
-    const { data: existingName } = await supabase.from('profiles').select('id').ilike('name', name).limit(1)
-    if (existingName && existingName.length > 0) { showToast('❌ Ein Mitglied mit diesem Namen existiert bereits'); setTempLoading(false); return }
-    const { error } = await supabase.from('profiles').insert({
-      id: crypto.randomUUID(), name, display_name: newTemp.vorname.trim(),
-      email: newTemp.email || `temp_${Date.now()}@ssv-boppard.intern`,
-      punkte: 0, schichten_count: 0, is_admin: false, is_temp: true, temp_typ: newTemp.typ,
+    // Prüfung auf doppelte E-Mail/Namen und Mitgliedschaft passieren serverseitig in der Funktion
+    const { error } = await supabase.rpc('temp_user_anlegen', {
+      p_verein: mitgliedschaft?.verein_id ?? verein.id,
+      p_name: name, p_typ: newTemp.typ, p_email: newTemp.email.trim() || null,
     })
-    if (error) showToast('❌ Fehler: ' + error.message)
+    if (error) showToast('❌ ' + error.message)
     else { showToast(`✅ ${name} angelegt!`); setNewTemp({ vorname:'', nachname:'', email:'', typ:'Mitglied' }); loadAll() }
     setTempLoading(false)
   }
@@ -298,6 +306,29 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
     if (data.erfolg) { showToast('🗑️ Account gelöscht'); loadAll() }
     else showToast('❌ Fehler: ' + data.fehler)
     setLoeschenUserId(null)
+  }
+
+  async function gastZusammenfuehren(v: { gast_id: string; gast_name: string; mitglied_id: string; mitglied_name: string }) {
+    const ok = window.confirm(`Gast "${v.gast_name}" mit dem Konto "${v.mitglied_name}" zusammenführen?\n\nSchichten, Punkte und Anfragen des Gasts gehen auf das Konto über. Der Gast wird danach gelöscht. Das lässt sich nicht rückgängig machen.`)
+    if (!ok) return
+    const { data, error } = await supabase.rpc('gast_zusammenfuehren', {
+      p_gast: v.gast_id, p_echt: v.mitglied_id, p_verein: mitgliedschaft?.verein_id ?? verein.id,
+    })
+    if (error) { showToast('❌ ' + error.message); return }
+    showToast(`✅ Zusammengeführt (${(data as any)?.punkte ?? 0} Punkte übertragen)`)
+    loadAll()
+  }
+
+  async function ausVereinEntfernen(user: Profile) {
+    const ok = window.confirm(`"${user.name || user.display_name}" aus dem Verein entfernen?\n\nZukünftige Schichten werden ausgetragen. ${(user as any).is_temp ? 'Der Gast wird komplett gelöscht.' : 'Das Konto selbst bleibt bestehen.'}`)
+    if (!ok) return
+    const { error } = await supabase.rpc('mitglied_entfernen', {
+      p_user: user.id, p_verein: mitgliedschaft?.verein_id ?? verein.id,
+    })
+    if (error) { showToast('❌ ' + error.message); return }
+    showToast('🗑️ Aus dem Verein entfernt')
+    if (selectedUser?.id === user.id) setSelectedUser(null)
+    loadAll()
   }
 
   async function loadUserProfil(user: Profile) {
@@ -1019,6 +1050,17 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
               <button style={btnPrimary} onClick={addTempUser} disabled={tempLoading}>{tempLoading ? 'Wird angelegt...' : 'Temporären User anlegen'}</button>
             </div>
           </Section>
+          {gastVorschlaege.length > 0 && (
+            <Section title={`Gäste zusammenführen (${gastVorschlaege.length})`}>
+              <InfoBox text="Ein Gast und ein echtes Konto haben denselben Namen. Beim Zusammenführen gehen Schichten und Punkte auf das Konto über." />
+              {gastVorschlaege.map(v => (
+                <div key={v.gast_id + v.mitglied_id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'10px 0', borderBottom:'1px solid #f9fafb' }}>
+                  <p style={{ fontSize:12, flex:1 }}><b>{v.gast_name}</b> (Gast) → {v.mitglied_name}</p>
+                  <button onClick={() => gastZusammenfuehren(v)} style={{ ...btnSm, background:'var(--primary)', color:'#fff', fontSize:11 }}>Zusammenführen</button>
+                </div>
+              ))}
+            </Section>
+          )}
           <Section title={`Alle User (${members.length})`}>
             <input style={{ ...inp, marginBottom:10 }} placeholder="User suchen..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
             {members.filter(m => (m.display_name || m.name || '').toLowerCase().includes(userSearch.toLowerCase())).map(m => {
@@ -1047,6 +1089,9 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
                     <button onClick={() => { setSelectedUser(selectedUser?.id === m.id ? null : m); loadAllSchichten(m.id) }} style={{ ...btnSm, background: selectedUser?.id === m.id ? 'var(--primary)' : 'var(--primary-light)', color: selectedUser?.id === m.id ? '#fff' : 'var(--primary)', fontSize:11 }}>{selectedUser?.id === m.id ? 'Schließen' : 'Zuweisen'}</button>
                     {!bestaetigt && (
                       <button onClick={() => setLoeschenUserId(m.id)} style={{ ...btnSm, background:'#fef2f2', color:'#ef4444', fontSize:11 }}>Löschen</button>
+                    )}
+                    {m.id !== profile.id && (
+                      <button onClick={() => ausVereinEntfernen(m)} style={{ ...btnSm, background:'#fff7ed', color:'#c2410c', fontSize:11 }}>Entfernen</button>
                     )}
                   </div>
                 </div>
