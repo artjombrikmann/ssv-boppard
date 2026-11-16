@@ -16,7 +16,9 @@ Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Daten
 | 4.3b Passwort-Reset | Erledigt: `04h` ausgeführt, Function `passwort-reset` deployt, in Produktion getestet |
 | 4.1b Farben auf CSS-Variablen | Erledigt, in Produktion (102x primary, 41x light; Ampel und Banner-Verläufe bewusst fest bzw. aus DB) |
 | 4.6 Event-Typen aus der Datenbank | Erledigt, in Produktion, `04i` ausgeführt. **Pflege der Typen im Admin fehlt noch** (nur per SQL) |
-| 4.4 Shop generisch, 4.5 Gäste, 4.7 Functions, 4.8 Vercel/DNS | Offen, bewusst NACH dem Event am 2026-11-13 |
+| 4.5 Verwaltung auf Funktionen, Gäste zusammenführen, Entfernen | Erledigt auf Branch `vorbereitung-ap5` (Preview), `04l` ausgeführt und getestet |
+| 4.4 Shop generisch | Code fertig auf `vorbereitung-ap5`: `Shop.tsx` liest `preise` und löst über `shop_einloesen` ein, `Profil.tsx` verweist auf den Shop, Function `shop-anfrage`, `04m`. **Nicht getestet, Function nicht deployt.** Admin-Tabs "Prämien" und "Anfragen" fehlen noch (Pflege der `preise` nur per SQL) |
+| 4.7 Functions, 4.8 Vercel/DNS | Offen |
 | 5 bis 8 | Offen |
 
 **`multi-mandant` ist nach `main` gemergt (PR #2 `59613a0`, PR #3 `7264507`).** Die Produktions-App läuft mit dem neuen Frontend (Teil 4.1 bis 4.3b). Rollback bei Problemen: in Vercel den Production-Eintrag `b61a998` (Stand AP 2) suchen, Promote to Production. Die Datenbank bleibt, das alte Frontend arbeitet damit weiter.
@@ -57,6 +59,8 @@ Danach, in dieser Reihenfolge: Frontend-Umbau (4.4, 4.5, 4.7, Rest 4.6), dann AP
 | `04i_event_typen_darstellung.sql` | `icon`, `verlauf`, `deko` in `event_typen`, Boppard-Werte, Verlauf-Prüfung | ausgeführt |
 | `04j_switch_hilfsfunktionen.sql` | `schicht_teilnehmer`, `belegungen_offen`, `vereins_mitglieder` (mit `email_bestaetigt`) | ausgeführt 2026-11-16, Kontrollen bestanden (Datei liegt auf Branch `vorbereitung-ap5`) |
 | `04k_anonym_sperren.sql` | restriktive Policies gegen anonymen Lesezugriff | ausgeführt 2026-11-16, 6 Policies, App-Test mit Test-Account bestanden |
+| `04l_mitglied_entfernen.sql` | `mitglied_entfernen` (Admin-Tab User, "Entfernen") | ausgeführt 2026-11-16, getestet |
+| `04m_shop_mail_und_bruecke.sql` | Mail-Trigger auf `shop_anfragen` (Function `shop-anfrage`), Punkte-Brücke `mitgliedschaften` nach `profiles` | **geschrieben, nicht ausgeführt**. Reihenfolge: erst `supabase functions deploy shop-anfrage`, dann SQL, dann Frontend in Produktion |
 | `05_b3_switch.sql` | DB-Switch (RLS pro Verein) | **geschrieben, nicht ausgeführt**, erst nach den Events |
 | `05_b3_rollback.sql` | macht den Switch rückgängig | geschrieben, nicht ausgeführt |
 
