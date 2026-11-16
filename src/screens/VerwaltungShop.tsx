@@ -4,7 +4,8 @@ import { supabase } from '../supabaseClient'
 // Admin-Tab "Shop": Anfragen bearbeiten und Prämien pflegen.
 // Alles läuft über Datenbankfunktionen (04n, 04b), nicht über direkte Tabellenzugriffe.
 
-interface Props { vereinId: string; toast: (msg: string) => void }
+// onGeaendert: nach einer Rückbuchung den Punktestand der App neu laden (der Admin kann selbst Antragsteller sein)
+interface Props { vereinId: string; toast: (msg: string) => void; onGeaendert?: () => void }
 
 interface Anfrage {
   id: string; user_id: string; mitglied_name: string; mitglied_email: string | null
@@ -28,7 +29,7 @@ const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
   abgelehnt:  { label: 'Abgelehnt',  bg: '#fef2f2', fg: '#b91c1c' },
 }
 
-export default function VerwaltungShop({ vereinId, toast }: Props) {
+export default function VerwaltungShop({ vereinId, toast, onGeaendert }: Props) {
   const [anfragen, setAnfragen] = useState<Anfrage[]>([])
   const [praemien, setPraemien] = useState<Praemie[]>([])
   const [form, setForm]         = useState<Form | null>(null)
@@ -56,6 +57,7 @@ export default function VerwaltungShop({ vereinId, toast }: Props) {
     if (error) { toast('❌ ' + error.message); return }
     toast(status === 'abgelehnt' ? '↩️ Abgelehnt, Punkte zurückgebucht' : '✅ Als erledigt markiert')
     laden()
+    onGeaendert?.()
   }
 
   function bearbeitenForm(p: Praemie) {

@@ -5,7 +5,7 @@ import { getBanner, useEventTypen } from '../eventBanner'
 import { useVerein } from '../VereinContext'
 import VerwaltungShop from './VerwaltungShop'
 
-interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void }
+interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void; onMitgliedschaftNeuLaden?: () => Promise<void> }
 type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv' | 'vorlagen' | 'shop'
 
 interface VeranstaltungMitAuslastung extends Veranstaltung {
@@ -15,7 +15,7 @@ interface VeranstaltungMitAuslastung extends Veranstaltung {
   auslastung: number
 }
 
-export default function Verwaltung({ profile, mitgliedschaft }: Props) {
+export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNeuLaden }: Props) {
   const verein = useVerein()
   const typen = useEventTypen(mitgliedschaft?.verein_id ?? verein.id)
   const [tab,        setTab]        = useState<AdminTab>('uebersicht')
@@ -134,6 +134,7 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
     await supabase.rpc('add_punkte', { user_id: b.mitglied_id, amount: b.schichten?.punkte ?? 0 })
     showToast(`⭐ ${b.schichten?.punkte} Punkte vergeben!`)
     loadAll()
+    onMitgliedschaftNeuLaden?.()   // Admin kann sich selbst Punkte geben
   }
 
   async function addEvent() {
@@ -977,7 +978,7 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
       )}
 
       {tab === 'shop' && verein.features?.shop && (
-        <VerwaltungShop vereinId={mitgliedschaft?.verein_id ?? verein.id} toast={showToast} />
+        <VerwaltungShop vereinId={mitgliedschaft?.verein_id ?? verein.id} toast={showToast} onGeaendert={() => onMitgliedschaftNeuLaden?.()} />
       )}
 
       {tab === 'kategorien' && (
