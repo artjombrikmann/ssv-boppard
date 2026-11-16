@@ -4,6 +4,7 @@ import { Profile, Mitgliedschaft, Schichtbelegung, Veranstaltung, Einstellungen,
 import { getBanner, useEventTypen } from '../eventBanner'
 import { useVerein } from '../VereinContext'
 import VerwaltungShop from './VerwaltungShop'
+import VerwaltungTypen from './VerwaltungTypen'
 
 interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void; onMitgliedschaftNeuLaden?: () => Promise<void> }
 type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv' | 'vorlagen' | 'shop'
@@ -17,7 +18,8 @@ interface VeranstaltungMitAuslastung extends Veranstaltung {
 
 export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNeuLaden }: Props) {
   const verein = useVerein()
-  const typen = useEventTypen(mitgliedschaft?.verein_id ?? verein.id)
+  const [typenVersion, setTypenVersion] = useState(0)
+  const typen = useEventTypen(mitgliedschaft?.verein_id ?? verein.id, typenVersion)
   const [tab,        setTab]        = useState<AdminTab>('uebersicht')
   const [bookings,   setBookings]   = useState<Schichtbelegung[]>([])
   const [members,    setMembers]    = useState<Profile[]>([])
@@ -1004,6 +1006,7 @@ export default function Verwaltung({ profile, mitgliedschaft, onMitgliedschaftNe
               </div>
             ))}
           </Section>
+          <VerwaltungTypen vereinId={mitgliedschaft?.verein_id ?? verein.id} toast={showToast} onGeaendert={() => setTypenVersion(v => v + 1)} />
         </div>
       )}
 

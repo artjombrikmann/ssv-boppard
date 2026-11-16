@@ -60,7 +60,8 @@ export function getBanner(typen: TypAnzeige[], key?: string | null): TypAnzeige 
 }
 
 /** Lädt die Event-Typen des Vereins. Bei Fehlern bleibt es bei den Standardtypen. */
-export function useEventTypen(vereinId: string | undefined): TypAnzeige[] {
+// neuLaden: beliebige Zahl, die sich ändert, wenn die Typen neu geladen werden sollen (z. B. nach dem Bearbeiten im Admin)
+export function useEventTypen(vereinId: string | undefined, neuLaden = 0): TypAnzeige[] {
   const [typen, setTypen] = useState<TypAnzeige[]>(STANDARD_TYPEN)
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export function useEventTypen(vereinId: string | undefined): TypAnzeige[] {
         setTypen(typenAnzeige(data as EventTyp[]))
       })
     return () => { aktiv = false }
-  }, [vereinId])
+  }, [vereinId, neuLaden])
 
   return typen
 }
