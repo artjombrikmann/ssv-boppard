@@ -16,8 +16,8 @@ Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Daten
 | 4.3b Passwort-Reset | Erledigt: `04h` ausgeführt, Function `passwort-reset` deployt, in Produktion getestet |
 | 4.1b Farben auf CSS-Variablen | Erledigt, in Produktion (102x primary, 41x light; Ampel und Banner-Verläufe bewusst fest bzw. aus DB) |
 | 4.6 Event-Typen aus der Datenbank | Erledigt, in Produktion, `04i` ausgeführt. **Pflege der Typen im Admin fehlt noch** (nur per SQL) |
-| 4.5 Verwaltung auf Funktionen, Gäste zusammenführen, Entfernen | Erledigt auf Branch `vorbereitung-ap5` (Preview), `04l` ausgeführt und getestet |
-| 4.4 Shop generisch | Code fertig auf `vorbereitung-ap5`: `Shop.tsx` liest `preise` und löst über `shop_einloesen` ein, `Profil.tsx` verweist auf den Shop, Function `shop-anfrage`, `04m`. Function deployt und `04m` ausgeführt, Frontend in der Preview noch **nicht getestet**. Admin-Tabs "Prämien" und "Anfragen" fehlen noch (Pflege der `preise` nur per SQL) |
+| 4.5 Verwaltung auf Funktionen, Gäste zusammenführen, Entfernen | Erledigt, in Produktion (nach `main` gemergt 2026-11-16), getestet |
+| 4.4 Shop generisch | Erledigt, in Produktion (2026-11-16), in Preview und Produktion getestet: `Shop.tsx` liest `preise` und löst über `shop_einloesen` ein, `Profil.tsx` verweist auf den Shop, Function `shop-anfrage`, `04m`. Function deployt, `04m` ausgeführt. Admin-Tabs "Prämien" und "Anfragen" fehlen noch (Pflege der `preise` nur per SQL) |
 | 4.7 Functions, 4.8 Vercel/DNS | Offen |
 | 5 bis 8 | Offen |
 
