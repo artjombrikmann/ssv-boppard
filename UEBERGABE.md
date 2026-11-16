@@ -23,7 +23,9 @@ Vorsicht: Es gibt **kein Staging**. Preview und Produktion nutzen dieselbe Daten
 
 ## Sofort offen
 
-**1. Datenleck schließen (empfohlen vor den Events):** Am 2026-11-11 zeigte eine Abfrage mit dem öffentlichen Anon-Key,
+**Erledigt am 2026-11-16: Punkt 1 (04k) und Punkt 2 (04j) sind ausgeführt und getestet. Offen bleibt Punkt 3.**
+
+**1. (erledigt) Datenleck schließen:** Am 2026-11-11 zeigte eine Abfrage mit dem öffentlichen Anon-Key,
 dass ohne Login lesbar sind: `profiles` (76 Zeilen mit E-Mail und Punkten), `einstellungen` (Freischaltcode, Admin-Mail),
 `schichtbelegungen` (119), `schichten` (88), `push_subscriptions` (2), `preise` (3). Es wurden nur Anzahlen abgefragt.
 Das Leck besteht seit Beginn (Policy `read_all`), nur das Schreiben war seit `01_hotfix` zu.
@@ -53,8 +55,8 @@ Danach, in dieser Reihenfolge: Frontend-Umbau (4.4, 4.5, 4.7, Rest 4.6), dann AP
 | `04g_registrierung_serverseitig.sql` | Code-Prüfung in `handle_new_user`, Einwilligungen, Brücke `einstellungen` nach `vereins_geheimnisse` | ausgeführt |
 | `04h_reset_versuche.sql` | Begrenzung Passwort-Reset | ausgeführt |
 | `04i_event_typen_darstellung.sql` | `icon`, `verlauf`, `deko` in `event_typen`, Boppard-Werte, Verlauf-Prüfung | ausgeführt |
-| `04j_switch_hilfsfunktionen.sql` | `schicht_teilnehmer`, `belegungen_offen`, `vereins_mitglieder` (mit `email_bestaetigt`) | **noch nicht ausgeführt**, nur auf Branch `vorbereitung-ap5` |
-| `04k_anonym_sperren.sql` | restriktive Policies gegen anonymen Lesezugriff | **noch nicht ausgeführt**, empfohlen vor den Events |
+| `04j_switch_hilfsfunktionen.sql` | `schicht_teilnehmer`, `belegungen_offen`, `vereins_mitglieder` (mit `email_bestaetigt`) | ausgeführt 2026-11-16, Kontrollen bestanden (Datei liegt auf Branch `vorbereitung-ap5`) |
+| `04k_anonym_sperren.sql` | restriktive Policies gegen anonymen Lesezugriff | ausgeführt 2026-11-16, 6 Policies, App-Test mit Test-Account bestanden |
 | `05_b3_switch.sql` | DB-Switch (RLS pro Verein) | **geschrieben, nicht ausgeführt**, erst nach den Events |
 | `05_b3_rollback.sql` | macht den Switch rückgängig | geschrieben, nicht ausgeführt |
 
