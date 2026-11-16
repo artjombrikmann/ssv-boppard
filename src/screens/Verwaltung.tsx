@@ -3,9 +3,10 @@ import { supabase } from '../supabaseClient'
 import { Profile, Mitgliedschaft, Schichtbelegung, Veranstaltung, Einstellungen, Kategorie, Schicht } from '../types'
 import { getBanner, useEventTypen } from '../eventBanner'
 import { useVerein } from '../VereinContext'
+import VerwaltungShop from './VerwaltungShop'
 
 interface Props { profile: Profile; mitgliedschaft?: Mitgliedschaft; onTabChange: (tab: string) => void }
-type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv' | 'vorlagen'
+type AdminTab = 'uebersicht' | 'veranstaltungen' | 'kategorien' | 'punkte' | 'mitglieder' | 'archiv' | 'vorlagen' | 'shop'
 
 interface VeranstaltungMitAuslastung extends Veranstaltung {
   schichten: Schicht[]
@@ -395,6 +396,7 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
     { id:'kategorien', label:'Kategorien' },
     { id:'punkte', label:'Punkte' },
     { id:'mitglieder', label:'User' },
+    ...(verein.features?.shop ? [{ id:'shop' as AdminTab, label:'Shop' }] : []),
     { id:'archiv', label:'Archiv' },
   ]
 
@@ -972,6 +974,10 @@ export default function Verwaltung({ profile, mitgliedschaft }: Props) {
             ))}
           </Section>
         </div>
+      )}
+
+      {tab === 'shop' && verein.features?.shop && (
+        <VerwaltungShop vereinId={mitgliedschaft?.verein_id ?? verein.id} toast={showToast} />
       )}
 
       {tab === 'kategorien' && (
